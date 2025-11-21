@@ -1,0 +1,4 @@
+=== Final Test Set Results ===
+Gaussian VAE MSE: 540.2629
+Uniform  VAE MSE: 467.9694
+Winner: Uniform
