@@ -98,7 +98,22 @@ class ASCIIBPETokenizer:
             list[int]: New list of token ids, after one merge step
         """
 
-        return ...
+        bigram_stats = compute_bigram_statistics(token_ids)
+
+        if not bigram_stats:
+            return token_ids
+        
+        best_bigram = min(
+            bigram_stats, key=lambda bigram: (-bigram_stats[bigram], bigram)
+        )
+
+        new_token_id = len(self.vocab)
+        token_left, token_right = best_bigram
+        new_token_str = self.vocab[token_left] + self.vocab[token_right]
+        self.vocab.append(new_token_str)
+        self.merge_rules[best_bigram] = new_token_id
+
+        return replace_bigram(token_ids, best_bigram, new_token_id)
 
     def encode(self, text: str) -> list[int]:
         """Convert text to tokens.
@@ -111,7 +126,15 @@ class ASCIIBPETokenizer:
         """
 
         assert all(ord(c) < 128 for c in text), "input text is not ASCII"
-        token_ids = ...
+        token_ids = string_to_ascii(text)
+        bigram_stats = compute_bigram_statistics(token_ids)
+
+        while bigram_stats.keys() & self.merge_rules.keys():
+            for bigram, bigram_id in self.merge_rules.items():
+                if bigram in bigram_stats:
+                    token_ids = replace_bigram(token_ids, bigram, bigram_id)
+                    break
+            bigram_stats = compute_bigram_statistics(token_ids)
         return token_ids
 
     def decode(self, token_ids: list[int]) -> str:
@@ -123,7 +146,7 @@ class ASCIIBPETokenizer:
         Returns:
             str: An ASCII string.
         """
-        return ...
+        return "".join([self.vocab[token_id] for token_id in token_ids])
 
     @classmethod
     def from_config(cls, config_file: str):

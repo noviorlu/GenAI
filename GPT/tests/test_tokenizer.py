@@ -11,13 +11,18 @@ def test_not_injective():
     tokenizer_name = "google-bert/bert-base-cased"
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
 
-    s1 = ...
-    s2 = ...
+    s1 = "我"
+    s2 = "你"
+
+    id1 = tokenizer.encode(s1, add_special_tokens=False)
+    id2 = tokenizer.encode(s2, add_special_tokens=False)
+
+    print(f"String 1: {s1} -> ID: {id1}")
+    print(f"String 2: {s2} -> ID: {id2}")
 
     assert s1 != s2 and tokenizer.encode(
         s1, add_special_tokens=False
     ) == tokenizer.encode(s2, add_special_tokens=False)
-
 
 def test_not_invertible():
     # you can try to break "google-bert/bert-base-cased"
@@ -25,11 +30,14 @@ def test_not_invertible():
     tokenizer_name = "google-bert/bert-base-cased"
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
 
-    s = ...
+    s = "hello你好"
 
     s_recovered = tokenizer.decode(tokenizer.encode(s, add_special_tokens=False))
-    assert s != s_recovered
 
+    print(f"Original String: {s}, IDs: {tokenizer.encode(s, add_special_tokens=False)}")
+    print(f"Recovered String: {s_recovered}")
+
+    assert s != s_recovered
 
 def test_not_preserving_concat():
     # you can try to break "google-bert/bert-base-cased"
@@ -37,8 +45,8 @@ def test_not_preserving_concat():
     tokenizer_name = "google-bert/bert-base-cased"
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_name)
 
-    a = ...
-    b = ...
+    a = "hello"
+    b = "hi"
     assert tokenizer.encode(a + b, add_special_tokens=False) != tokenizer.encode(
         a, add_special_tokens=False
     ) + tokenizer.encode(b, add_special_tokens=False)
