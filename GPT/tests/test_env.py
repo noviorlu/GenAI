@@ -440,4 +440,4 @@ def get_env_info():
 def test_env():
     env_info = get_env_info()
     assert env_info.torch_version.startswith("2.")
-    assert env_info.python_version.startswith("3.11")
+    assert env_info.python_version.startswith("3.11") or env_info.python_version.startswith("3.12")

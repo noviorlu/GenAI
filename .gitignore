@@ -1,2 +1,4 @@
 *.pyc
 *info
+wandb/
+GPT/outputs/

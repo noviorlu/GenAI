@@ -5,63 +5,7 @@
             "score": 0,
             "status": "passed",
             "max_score": 0,
-            "name": "test_not_injective",
-            "output": "",
-            "visibility": "visible"
-        },
-        {
-            "score": 0,
-            "status": "passed",
-            "max_score": 0,
-            "name": "test_not_invertible",
-            "output": "",
-            "visibility": "visible"
-        },
-        {
-            "score": 0,
-            "status": "passed",
-            "max_score": 0,
-            "name": "test_not_preserving_concat",
-            "output": "",
-            "visibility": "visible"
-        },
-        {
-            "score": 5,
-            "status": "passed",
-            "max_score": 5,
-            "name": "test_encode",
-            "output": "",
-            "visibility": "visible"
-        },
-        {
-            "score": 5,
-            "status": "passed",
-            "max_score": 5,
-            "name": "test_decode",
-            "output": "",
-            "visibility": "visible"
-        },
-        {
-            "score": 5,
-            "status": "passed",
-            "max_score": 5,
-            "name": "test_one_merge",
-            "output": "",
-            "visibility": "visible"
-        },
-        {
-            "score": 5,
-            "status": "passed",
-            "max_score": 5,
-            "name": "test_two_merges",
-            "output": "",
-            "visibility": "visible"
-        },
-        {
-            "score": 5,
-            "status": "passed",
-            "max_score": 5,
-            "name": "test_100_merges",
+            "name": "test_env",
             "output": "",
             "visibility": "visible"
         }
