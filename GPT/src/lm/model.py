@@ -48,9 +48,12 @@ class MultiHeadAttention(nn.Module):
             kT: The transpose of the key vector used by multi-head attention (B x H x HD x S)
             v: The value vector used by multi-head attention (B x H x S x HD)
         """
-        q = ...
-        kT = ...
-        v = ...
+        q = self.q_attn(x)
+        k = self.k_attn(x)
+        v = self.v_attn(x)
+        q = rearrange(q, "b s (h d) -> b h s d", h=self.n_head)
+        kT = rearrange(k, "b s (h d) -> b h d s", h=self.n_head)
+        v = rearrange(v, "b s (h d) -> b h s d", h=self.n_head)
 
         return q, kT, v
 
@@ -75,8 +78,10 @@ class MultiHeadAttention(nn.Module):
             attn: Outputs of applying multi-head attention to the inputs (B x S x D)
         """
 
+        B, H, S, HD = q.shape
+
         # compute the attention weights using q and kT
-        qkT =...
+        qkT = torch.matmul(q, kT) #(B H S S)
         unmasked_attn_logits = qkT * self.scale_factor
 
         """
@@ -102,7 +107,7 @@ class MultiHeadAttention(nn.Module):
 
         Hint: torch.triu or torch.tril
         """
-        causal_mask = ...
+        causal_mask = torch.tril(torch.ones((S, S), device=q.device, dtype=torch.bool))
 
         """
         Sometimes, we want to pad the input sequences so that they have the same
@@ -145,7 +150,7 @@ class MultiHeadAttention(nn.Module):
         if attention_mask is None:
             mask = causal_mask
         else:
-            mask = ...
+            mask = causal_mask & (attention_mask[:, None, None, :] == 1)
 
         """
         Fill unmasked_attn_logits with float_min wherever causal mask has value False.
@@ -153,13 +158,18 @@ class MultiHeadAttention(nn.Module):
         Hint: torch.masked_fill
         """
         float_min = torch.finfo(q.dtype).min
-        attn_logits = ...
-        attn_weights = ...
+        attn_logits = unmasked_attn_logits.masked_fill(~mask, float_min)
+        attn_weights = F.softmax(attn_logits, dim=-1)
         attn_weights = self.dropout(attn_weights)
 
         # scale value by the attention weights.
-        attn = ...
+        attn = torch.matmul(attn_weights, v)  # (B H S HD)
+        attn = rearrange(attn, "b h s d -> b s (h d)")
 
+        if attention_mask is not None:
+            # zero out outputs that correspond to masked input tokens
+            attn = attn * attention_mask[:, :, None]
+        
         return attn
 
     def projection(self, attn: torch.FloatTensor) -> torch.FloatTensor:
@@ -177,8 +187,9 @@ class MultiHeadAttention(nn.Module):
         Returns:
             y: outputs (B x S x D) of the multi-head attention module
         """
-
-        y = ...
+        q, kT, v = self.q_kT_v(x)
+        attn = self.self_attention(q, kT, v, attention_mask)
+        y = self.projection(attn)
         return y
 
 
@@ -208,8 +219,8 @@ class FeedForward(nn.Module):
         self.dropout to the output.
         """
 
-        y = F.gelu(...)
-        z = self.dropout(...)
+        y = F.gelu(self.linear_in(x))
+        z = self.dropout(self.linear_out(y))
         return z
 
 
@@ -249,8 +260,16 @@ class DecoderBlock(nn.Module):
         implementations should pass the tests. See explanations here:
         https://sh-tsang.medium.com/review-pre-ln-transformer-on-layer-normalization-in-the-transformer-architecture-b6c91a89e9ab
         """
-
-        return ...
+        residual = x
+        x = self.ln_1(x)
+        x = self.mha(x, attention_mask)
+        x = x + residual
+        
+        residual = x
+        x = self.ln_2(x)
+        x = self.ff(x)
+        x = x + residual
+        return x
 
 
 class DecoderLM(nn.Module):
@@ -335,8 +354,15 @@ class DecoderLM(nn.Module):
         """
 
         assert input_ids.shape[1] <= self.n_positions
-        token_embeddings = ...
-        positional_embeddings = ...
+        B, S = input_ids.shape
+        if attention_mask is None:
+            position_ids = torch.arange(S, device=input_ids.device).unsqueeze(0).repeat(B, 1)
+        else:
+            position_ids = (attention_mask.cumsum(dim=1) - 1).clamp(min=0).long()
+
+        token_embeddings = self.token_embeddings(input_ids)
+        positional_embeddings = self.position_embeddings(position_ids)
+
         return self.dropout(token_embeddings + positional_embeddings)
 
     def token_logits(self, x: torch.FloatTensor) -> torch.FloatTensor:
@@ -351,7 +377,7 @@ class DecoderLM(nn.Module):
         Hint: Question 2.2.
         """
 
-        logits = ...
+        logits = F.linear(x, self.token_embeddings.weight)
         return logits
 
     def forward(
@@ -370,7 +396,12 @@ class DecoderLM(nn.Module):
             logits: logits corresponding to the predicted next token likelihoods (B x S x V)
         """
 
-        logits = ...
+        x = self.embed(input_ids, attention_mask)
+        for block in self.blocks:
+            x = block(x, attention_mask)
+        x = self.ln(x)
+        logits = self.token_logits(x)
+
         return logits
 
     def _init_weights(self, module):
