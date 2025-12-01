@@ -2,3 +2,4 @@
 *info
 wandb/
 GPT/outputs/
+GPT/data/tokens.npz
