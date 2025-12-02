@@ -40,12 +40,13 @@ def generate(
     batch_size: int,
     max_new_tokens: int = 32,
     temperature: float = 0.1,
-) -> list[str]:
+) -> tuple[list[str], float]:
     
+    disable_tqdm = (len(prefixes) == 1)
     generations = []
     losses = []
 
-    for i in tqdm(range(0, len(prefixes), batch_size), desc="Generating"):
+    for i in tqdm(range(0, len(prefixes), batch_size), desc="Generating", disable=disable_tqdm):
         batch_prefixes = prefixes[i : i + batch_size]
         tokenized_batch = [tokenizer.encode(p) for p in batch_prefixes]
         max_len = max(len(ids) for ids in tokenized_batch)
@@ -66,10 +67,14 @@ def generate(
 
         logits = model(input_ids, attention_mask)
         
-        labels = input_ids.clone()
-        labels[attention_mask == 0] = -100
+        shift_logits = logits[..., :-1, :].contiguous()
+        shift_labels = input_ids[..., 1:].contiguous().clone()
+        shift_mask = attention_mask[..., :-1].contiguous()
         
-        loss = compute_language_modeling_loss(labels, logits)
+        shift_labels[shift_mask == 0] = -100
+        
+        loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-100)
+        loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
         losses.append(loss.item())
 
         curr_input_ids = input_ids.clone()
@@ -87,9 +92,14 @@ def generate(
 
         batch_generations = []
         for j, seq in enumerate(curr_input_ids):
-            pad_len = max_len - len(tokenized_batch[j])
-            valid_seq = seq[pad_len:]
-            text = tokenizer.decode(valid_seq.tolist())
+            original_input_len = len(tokenized_batch[j])
+            pad_len = max_len - original_input_len
+            
+            start_index = pad_len + original_input_len
+            
+            new_tokens_only = seq[start_index:] 
+            
+            text = tokenizer.decode(new_tokens_only.tolist())
             batch_generations.append(text)
         
         generations.extend(batch_generations)
@@ -97,8 +107,40 @@ def generate(
     mean_loss = sum(losses) / len(losses) if losses else 0.0
     perplexity = math.exp(mean_loss)
 
-    print(f"Perplexity: {perplexity}")
-    return generations
+    return generations, perplexity
+
+
+def run_interactive_mode(args, model, device, tokenizer):
+    print("\n" + "="*50)
+    print("🤖 Interactive Mode Started")
+    print(f"Config: Temp={args.temperature}, Max Tokens={args.max_new_tokens}")
+    print("Type 'exit' or 'quit' to stop.")
+    print("="*50 + "\n")
+
+    while True:
+        try:
+            user_input = input("\nUser: ")
+            if user_input.lower() in ["exit", "quit"]:
+                break
+            if not user_input.strip():
+                continue
+
+            generations, ppl = generate(
+                model=model,
+                device=device,
+                tokenizer=tokenizer,
+                prefixes=[user_input],
+                batch_size=1,
+                max_new_tokens=args.max_new_tokens,
+                temperature=args.temperature,
+            )
+
+            print(f"[Input PPL: {ppl:.2f}]")
+            print(f"Model: {generations[0]}")
+
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            break
 
 
 def main():
@@ -114,8 +156,13 @@ def main():
     parser.add_argument(
         "--prefixes",
         type=str,
-        required=True,
+        default=None, 
         help="a json file with a list of strings as prefixes for generation",
+    )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="run in interactive mode (chat from command line)",
     )
     parser.add_argument(
         "--max_new_tokens",
@@ -129,10 +176,9 @@ def main():
 
     args = parser.parse_args()
     config = args.config
-    with open(args.prefixes) as f:
-        prefixes = [json.loads(line)["prefix"] for line in f]
-    max_new_tokens = args.max_new_tokens
-    temperature = args.temperature
+
+    if not args.interactive and args.prefixes is None:
+        parser.error("the following arguments are required: --prefixes (unless --interactive is set)")
 
     # initialize tokenizer and model
     model_path = os.path.join(config.output_dir, "model.pt")
@@ -144,24 +190,32 @@ def main():
 
     # generate and save outputs
     model.eval()
-    generations = generate(
-        model,
-        device,
-        tokenizer,
-        prefixes,
-        config.batch_size,
-        max_new_tokens,
-        temperature,
-    )
 
-    generation_path = os.path.join(config.output_dir, "generation.jsonl")
-    print(f"writing generations to {generation_path}")
-    with open(generation_path, "w") as f:
-        for prefix, generation in zip(prefixes, generations):
-            json.dump({"prefix": prefix, "generation": generation}, f)
-            f.write("\n")
+    if args.interactive:
+        run_interactive_mode(args, model, device, tokenizer)
+    else:
+        with open(args.prefixes) as f:
+            prefixes = [json.loads(line)["prefix"] for line in f]
+        
+        generations, perplexity = generate(
+            model,
+            device,
+            tokenizer,
+            prefixes,
+            config.batch_size,
+            args.max_new_tokens,
+            args.temperature,
+        )
 
-    print("done!")
+        print(f"Average Perplexity: {perplexity}")
+        generation_path = os.path.join(config.output_dir, "generation.jsonl")
+        print(f"writing generations to {generation_path}")
+        with open(generation_path, "w") as f:
+            for prefix, generation in zip(prefixes, generations):
+                json.dump({"prefix": prefix, "generation": generation}, f)
+                f.write("\n")
+
+        print("done!")
 
 
 if __name__ == "__main__":
