@@ -2,10 +2,10 @@
     "stdout_visibility": "visible",
     "tests": [
         {
-            "score": 5,
+            "score": 0,
             "status": "passed",
-            "max_score": 5,
-            "name": "test_softmax_with_temperature",
+            "max_score": 0,
+            "name": "test_llama_architecture",
             "output": "",
             "visibility": "visible"
         }

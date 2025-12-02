@@ -15,6 +15,162 @@ Dimension symbols:
     V - size of the vocabulary
 """
 
+# ==========================================
+# Llama Components (New Architecture)
+# ==========================================
+
+class RMSNorm(nn.Module):
+    def __init__(self, dim: int, eps: float = 1e-6):
+        super().__init__()
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim))
+
+    def _norm(self, x):
+        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+
+    def forward(self, x):
+        output = self._norm(x.float()).type_as(x)
+        return output * self.weight
+
+def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
+    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
+    t = torch.arange(end, device=freqs.device)
+    freqs = torch.outer(t, freqs).float()
+    freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
+    return freqs_cis
+
+def apply_rotary_emb(xq: torch.Tensor, xk: torch.Tensor, freqs_cis: torch.Tensor):
+    xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
+    xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
+    freqs_cis = freqs_cis.view(1, 1, *freqs_cis.shape) # Broadcast
+    xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
+    xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
+    return xq_out.type_as(xq), xk_out.type_as(xk)
+
+class SwiGLU(nn.Module):
+    def __init__(self, n_embd: int):
+        super().__init__()
+        hidden_dim = int(4 * n_embd) 
+        hidden_dim = int(2 * hidden_dim / 3) 
+        self.w1 = nn.Linear(n_embd, hidden_dim, bias=False)
+        self.w2 = nn.Linear(hidden_dim, n_embd, bias=False)
+        self.w3 = nn.Linear(n_embd, hidden_dim, bias=False)
+
+    def forward(self, x):
+        return self.w2(F.silu(self.w1(x)) * self.w3(x))
+
+class LlamaAttention(nn.Module):
+    def __init__(self, n_embd: int, n_head: int, p_dropout: float = 0.1):
+        super().__init__()
+        self.n_head = n_head
+        attn_hidden_dim = n_embd // n_head
+        self.q_attn = nn.Linear(n_embd, n_embd, bias=False) # Llama usually no bias
+        self.k_attn = nn.Linear(n_embd, n_embd, bias=False)
+        self.v_attn = nn.Linear(n_embd, n_embd, bias=False)
+        self.proj = nn.Linear(n_embd, n_embd, bias=False)
+        self.dropout = nn.Dropout(p_dropout)
+        scale_factor = 1 / torch.sqrt(torch.tensor(attn_hidden_dim))
+        self.register_buffer("scale_factor", scale_factor)
+
+    def forward(self, x, freqs_cis, attention_mask=None):
+        B, S, D = x.shape
+        q = self.q_attn(x)
+        k = self.k_attn(x)
+        v = self.v_attn(x)
+
+        q = rearrange(q, "b s (h d) -> b h s d", h=self.n_head)
+        k = rearrange(k, "b s (h d) -> b h s d", h=self.n_head) # Note: k is b h s d here for RoPE
+        v = rearrange(v, "b s (h d) -> b h s d", h=self.n_head)
+
+        q, k = apply_rotary_emb(q, k, freqs_cis)
+        
+        kT = rearrange(k, "b h s d -> b h d s") # Transpose for attention
+
+        qkT = torch.matmul(q, kT)
+        unmasked_attn_logits = qkT * self.scale_factor
+        
+        # Masking Logic (Same as original)
+        causal_mask = torch.tril(torch.ones((S, S), device=x.device, dtype=torch.bool))
+        if attention_mask is None:
+            mask = causal_mask
+        else:
+            mask = causal_mask & (attention_mask[:, None, None, :] == 1)
+            
+        float_min = torch.finfo(q.dtype).min
+        attn_logits = unmasked_attn_logits.masked_fill(~mask, float_min)
+        attn_weights = F.softmax(attn_logits, dim=-1)
+        attn_weights = self.dropout(attn_weights)
+        
+        attn = torch.matmul(attn_weights, v)
+        attn = rearrange(attn, "b h s d -> b s (h d)")
+        
+        if attention_mask is not None:
+            attn = attn * attention_mask[:, :, None]
+            
+        return self.dropout(self.proj(attn))
+
+class LlamaBlock(nn.Module):
+    def __init__(self, n_embd: int, n_head: int):
+        super().__init__()
+        self.rms_1 = RMSNorm(n_embd)
+        self.mha = LlamaAttention(n_embd, n_head)
+        self.rms_2 = RMSNorm(n_embd)
+        self.ff = SwiGLU(n_embd)
+
+    def forward(self, x, freqs_cis, attention_mask):
+        h = x + self.mha(self.rms_1(x), freqs_cis, attention_mask)
+        out = h + self.ff(self.rms_2(h))
+        return out
+
+class LlamaLM(nn.Module):
+    """Llama-style Decoder Language Model."""
+    def __init__(self, n_vocab, n_embd, n_head, n_positions, n_layer, p_dropout=0.1):
+        super().__init__()
+        self.n_vocab = n_vocab
+        self.n_embd = n_embd
+        self.n_head = n_head
+        self.n_positions = n_positions
+        self.n_layer = n_layer
+        
+        self.token_embeddings = nn.Embedding(n_vocab, n_embd)
+        self.head_dim = n_embd // n_head
+        self.freqs_cis = precompute_freqs_cis(self.head_dim, n_positions * 2)
+        
+        self.blocks = nn.ModuleList([LlamaBlock(n_embd, n_head) for _ in range(n_layer)])
+        self.ln = RMSNorm(n_embd)
+        self.dropout = nn.Dropout(p_dropout)
+        
+        self.apply(self._init_weights)
+
+        self.flops_per_token = (
+            6 * count_params(self) + 12 * n_layer * n_embd * n_positions
+        )
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+
+    def forward(self, input_ids, attention_mask=None):
+        x = self.dropout(self.token_embeddings(input_ids))
+        
+        b, s = input_ids.shape
+        if self.freqs_cis.device != x.device:
+            self.freqs_cis = self.freqs_cis.to(x.device)
+        freqs_cis = self.freqs_cis[:s]
+
+        for block in self.blocks:
+            x = block(x, freqs_cis, attention_mask)
+            
+        x = self.ln(x)
+        logits = F.linear(x, self.token_embeddings.weight)
+        return logits
+
+
+# ==========================================
+# Original Components (GPT-2 Style)
+# ==========================================
 
 class MultiHeadAttention(nn.Module):
     """The multi-head attention module in a decoder block."""
@@ -407,7 +563,7 @@ class DecoderLM(nn.Module):
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not ...:
+            if module.bias is not None:
                 torch.nn.init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)

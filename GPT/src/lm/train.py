@@ -18,7 +18,7 @@ from einops import rearrange
 from omegaconf import OmegaConf
 from tqdm import tqdm, trange
 
-from lm.model import DecoderLM
+from lm.model import DecoderLM, LlamaLM
 from lm.utils import (
     count_params,
     determine_device,
@@ -251,7 +251,21 @@ def main():
     # initialize tokenizer and model
     tokenizer = tiktoken.get_encoding(config.tokenizer_encoding)
     device = determine_device() if config.device == "auto" else config.device
-    model = DecoderLM(tokenizer.n_vocab, **config.model_config).to(device)
+    
+    # === 根据配置选择模型架构 ===
+    # 默认为 "gpt2" (即原始 DecoderLM)，如果是 "llama"，则使用 LlamaLM
+    model_type = config.get("model_type", "gpt2").lower()
+    
+    print(f"Initializing model type: {model_type}")
+    
+    if model_type == "llama":
+        model = LlamaLM(tokenizer.n_vocab, **config.model_config).to(device)
+    elif model_type == "gpt2":
+        model = DecoderLM(tokenizer.n_vocab, **config.model_config).to(device)
+    else:
+        raise ValueError(f"Unknown model_type: {model_type}. Choose 'gpt2' or 'llama'.")
+    # ==========================================
+    
     print(f"model parameters = {count_params(model) / 1e6:.0f}M")
 
     model_disk_size_MB = estimate_model_disk_size(model) * 1e-6
