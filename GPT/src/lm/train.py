@@ -264,6 +264,12 @@ def main():
         model = DecoderLM(tokenizer.n_vocab, **config.model_config).to(device)
     else:
         raise ValueError(f"Unknown model_type: {model_type}. Choose 'gpt2' or 'llama'.")
+    
+    print("Compiling model...")
+    try:
+        model = torch.compile(model)
+    except Exception as e:
+        print(f"Windows compile skipped: {e}")
     # ==========================================
     
     print(f"model parameters = {count_params(model) / 1e6:.0f}M")

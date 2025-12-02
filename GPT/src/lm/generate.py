@@ -8,7 +8,7 @@ import tiktoken
 import torch
 from omegaconf import OmegaConf
 from tqdm import trange, tqdm
-from lm.model import DecoderLM
+from lm.model import DecoderLM, LlamaLM
 from lm.utils import determine_device, enable_tf32
 from lm.train import compute_language_modeling_loss
 
@@ -185,8 +185,27 @@ def main():
     assert os.path.exists(model_path), f"no model checkpoint at {model_path}"
     tokenizer = tiktoken.get_encoding(config.tokenizer_encoding)
     device = determine_device() if config.device == "auto" else config.device
-    model = DecoderLM(tokenizer.n_vocab, **config.model_config).to(device)
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    
+    model_type = config.get("model_type", "gpt2").lower()
+    
+    print(f"Initializing model type: {model_type}")
+    
+    if model_type == "llama":
+        model = LlamaLM(tokenizer.n_vocab, **config.model_config).to(device)
+    elif model_type == "gpt2":
+        model = DecoderLM(tokenizer.n_vocab, **config.model_config).to(device)
+    else:
+        raise ValueError(f"Unknown model_type: {model_type}. Choose 'gpt2' or 'llama'.")
+
+    state_dict = torch.load(model_path, map_location=device)
+    
+    unwanted_prefix = '_orig_mod.'
+    for k, v in list(state_dict.items()):
+        if k.startswith(unwanted_prefix):
+            new_key = k[len(unwanted_prefix):]
+            state_dict[new_key] = state_dict.pop(k)
+
+    model.load_state_dict(state_dict)
 
     # generate and save outputs
     model.eval()

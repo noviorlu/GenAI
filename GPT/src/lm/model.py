@@ -35,17 +35,25 @@ class RMSNorm(nn.Module):
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
     t = torch.arange(end, device=freqs.device)
-    freqs = torch.outer(t, freqs).float()
-    freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
-    return freqs_cis
+    freqs = torch.outer(t, freqs).float()  # (end, dim//2)
+    emb = torch.cat((freqs, freqs), dim=-1)
+    return emb.cos(), emb.sin()
 
-def apply_rotary_emb(xq: torch.Tensor, xk: torch.Tensor, freqs_cis: torch.Tensor):
-    xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
-    xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
-    freqs_cis = freqs_cis.view(1, 1, *freqs_cis.shape) # Broadcast
-    xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
-    xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
-    return xq_out.type_as(xq), xk_out.type_as(xk)
+def rotate_half(x):
+    """Rotates half the hidden dims of the input."""
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
+
+def apply_rotary_emb(xq: torch.Tensor, xk: torch.Tensor, freqs_cis: tuple):
+    cos, sin = freqs_cis
+    # xq, xk shape: (B, H, S, D)
+    # cos, sin shape: (S, D) -> 需要扩展为 (1, 1, S, D)
+    
+    cos = cos.unsqueeze(0).unsqueeze(0) # (1, 1, S, D)
+    sin = sin.unsqueeze(0).unsqueeze(0) # (1, 1, S, D)
+    
+    return (xq * cos) + (rotate_half(xq) * sin), (xk * cos) + (rotate_half(xk) * sin)
 
 class SwiGLU(nn.Module):
     def __init__(self, n_embd: int):
@@ -127,13 +135,20 @@ class LlamaLM(nn.Module):
         
         self.token_embeddings = nn.Embedding(n_vocab, n_embd)
         self.head_dim = n_embd // n_head
-        self.freqs_cis = precompute_freqs_cis(self.head_dim, n_positions * 2)
+
+        cos, sin = precompute_freqs_cis(self.head_dim, n_positions * 2)
+        self.register_buffer("cos_cached", cos)
+        self.register_buffer("sin_cached", sin)
         
         self.blocks = nn.ModuleList([LlamaBlock(n_embd, n_head) for _ in range(n_layer)])
         self.ln = RMSNorm(n_embd)
         self.dropout = nn.Dropout(p_dropout)
         
         self.apply(self._init_weights)
+
+        for pn, p in self.named_parameters():
+            if pn.endswith("proj.weight"):
+                torch.nn.init.normal_(p, mean=0.0, std=0.02 / torch.sqrt(torch.tensor(2 * n_layer)))
 
         self.flops_per_token = (
             6 * count_params(self) + 12 * n_layer * n_embd * n_positions
@@ -149,9 +164,9 @@ class LlamaLM(nn.Module):
         x = self.dropout(self.token_embeddings(input_ids))
         
         b, s = input_ids.shape
-        if self.freqs_cis.device != x.device:
-            self.freqs_cis = self.freqs_cis.to(x.device)
-        freqs_cis = self.freqs_cis[:s]
+        cos = self.cos_cached[:s]
+        sin = self.sin_cached[:s]
+        freqs_cis = (cos, sin)
 
         for block in self.blocks:
             x = block(x, freqs_cis, attention_mask)
