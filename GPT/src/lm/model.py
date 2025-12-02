@@ -79,35 +79,28 @@ class LlamaAttention(nn.Module):
         v = self.v_attn(x)
 
         q = rearrange(q, "b s (h d) -> b h s d", h=self.n_head)
-        k = rearrange(k, "b s (h d) -> b h s d", h=self.n_head) # Note: k is b h s d here for RoPE
+        k = rearrange(k, "b s (h d) -> b h s d", h=self.n_head)
         v = rearrange(v, "b s (h d) -> b h s d", h=self.n_head)
 
         q, k = apply_rotary_emb(q, k, freqs_cis)
-        
-        kT = rearrange(k, "b h s d -> b h d s") # Transpose for attention
 
-        qkT = torch.matmul(q, kT)
-        unmasked_attn_logits = qkT * self.scale_factor
-        
-        # Masking Logic (Same as original)
-        causal_mask = torch.tril(torch.ones((S, S), device=x.device, dtype=torch.bool))
         if attention_mask is None:
-            mask = causal_mask
+            out = F.scaled_dot_product_attention(
+                q, k, v, 
+                dropout_p=self.dropout.p if self.training else 0.0,
+                is_causal=True 
+            )
         else:
-            mask = causal_mask & (attention_mask[:, None, None, :] == 1)
-            
-        float_min = torch.finfo(q.dtype).min
-        attn_logits = unmasked_attn_logits.masked_fill(~mask, float_min)
-        attn_weights = F.softmax(attn_logits, dim=-1)
-        attn_weights = self.dropout(attn_weights)
-        
-        attn = torch.matmul(attn_weights, v)
-        attn = rearrange(attn, "b h s d -> b s (h d)")
-        
-        if attention_mask is not None:
-            attn = attn * attention_mask[:, :, None]
-            
-        return self.dropout(self.proj(attn))
+            attn_mask = attention_mask[:, None, None, :] # (B, 1, 1, S)
+            out = F.scaled_dot_product_attention(
+                q, k, v, 
+                attn_mask=attn_mask,
+                dropout_p=self.dropout.p if self.training else 0.0,
+                is_causal=True
+            )
+
+        out = rearrange(out, "b h s d -> b s (h d)")
+        return self.proj(out)
 
 class LlamaBlock(nn.Module):
     def __init__(self, n_embd: int, n_head: int):
