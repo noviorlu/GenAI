@@ -2,11 +2,12 @@ import argparse
 import json
 import os
 import math
+import torch.nn.functional as F
 
 import tiktoken
 import torch
 from omegaconf import OmegaConf
-from tqdm import trange
+from tqdm import trange, tqdm
 from lm.model import DecoderLM
 from lm.utils import determine_device, enable_tf32
 from lm.train import compute_language_modeling_loss
@@ -27,7 +28,7 @@ def softmax_with_temperature(
 
     # to avoid division by 0
     temperature = max(temperature, 1e-5)
-    return ...
+    return F.softmax(logits / temperature, dim=-1)
 
 
 @torch.inference_mode()
@@ -40,28 +41,61 @@ def generate(
     max_new_tokens: int = 32,
     temperature: float = 0.1,
 ) -> list[str]:
-    """Generates completions conditioned on prefixes; computes perplexity
+    
+    generations = []
+    losses = []
 
-    Args:
-        model: the language model
-        device: device to put the tensors on
-        tokenizer: the tokenizer
-        prefixes: a list of strings as prefixes for generation
-        batch_size: number of prefixes to batch together during generation
-        max_new_tokens: the number of tokens to generate for each prefix
-        temperature: temperature parameter of softmax
+    for i in tqdm(range(0, len(prefixes), batch_size), desc="Generating"):
+        batch_prefixes = prefixes[i : i + batch_size]
+        tokenized_batch = [tokenizer.encode(p) for p in batch_prefixes]
+        max_len = max(len(ids) for ids in tokenized_batch)
 
-    Returns:
-        a list of strings (continuations to prefixes)
+        input_ids_list = []
+        attention_mask_list = []
 
-    Note: you should implement a batched version of this function by
-        left-padding tokenized prefixes with `tokenizer.eot_token` so that all
-        sequences have equal length. `attention_mask` should be set to 0.0 for
-        padding tokens, and 1.0 everywhere else.
-    """
+        for ids in tokenized_batch:
+            pad_len = max_len - len(ids)
+            padded_ids = [tokenizer.eot_token] * pad_len + ids
+            mask = [0.0] * pad_len + [1.0] * len(ids)
+            
+            input_ids_list.append(padded_ids)
+            attention_mask_list.append(mask)
 
-    generations = ...
-    perplexity = ...
+        input_ids = torch.tensor(input_ids_list, dtype=torch.long, device=device)
+        attention_mask = torch.tensor(attention_mask_list, dtype=torch.float, device=device)
+
+        logits = model(input_ids, attention_mask)
+        
+        labels = input_ids.clone()
+        labels[attention_mask == 0] = -100
+        
+        loss = compute_language_modeling_loss(labels, logits)
+        losses.append(loss.item())
+
+        curr_input_ids = input_ids.clone()
+        curr_attention_mask = attention_mask.clone()
+
+        for _ in range(max_new_tokens):
+            logits = model(curr_input_ids, curr_attention_mask)
+            next_token_logits = logits[:, -1, :]
+            probs = softmax_with_temperature(next_token_logits, temperature)
+            next_token = torch.multinomial(probs, num_samples=1)
+            
+            curr_input_ids = torch.cat([curr_input_ids, next_token], dim=1)
+            new_mask = torch.ones((curr_input_ids.shape[0], 1), device=device, dtype=torch.float)
+            curr_attention_mask = torch.cat([curr_attention_mask, new_mask], dim=1)
+
+        batch_generations = []
+        for j, seq in enumerate(curr_input_ids):
+            pad_len = max_len - len(tokenized_batch[j])
+            valid_seq = seq[pad_len:]
+            text = tokenizer.decode(valid_seq.tolist())
+            batch_generations.append(text)
+        
+        generations.extend(batch_generations)
+
+    mean_loss = sum(losses) / len(losses) if losses else 0.0
+    perplexity = math.exp(mean_loss)
 
     print(f"Perplexity: {perplexity}")
     return generations
