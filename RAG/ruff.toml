@@ -1,2 +1,0 @@
-[lint.isort]
-known-local-folder = ["calculator", "pytest_utils", "retriever"]
