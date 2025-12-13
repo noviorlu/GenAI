@@ -2,19 +2,20 @@ from unsloth import FastLanguageModel
 from datasets import load_dataset
 from trl import SFTTrainer
 from transformers import TrainingArguments
+from unsloth.chat_templates import get_chat_template
 import torch
+import os
 
 # ==========================================
 # 1. 配置与加载模型
 # ==========================================
-max_seq_length = 4096 
+# 注意：Qwen3 尚未发布，这里使用 Qwen2.5-0.5B-Instruct 作为替代，它是目前最强的 0.5B 模型
+model_name = "Qwen/Qwen3-0.6B" 
+max_seq_length = 2048 # 0.5B 模型通常显存充裕，但为了安全设为 2048
 dtype = None 
 load_in_4bit = True 
 
-# **修改建议：使用 Qwen 1.5-7B-Chat**
-model_name = "Qwen/Qwen1.5-7B-Chat" 
-
-print(f"Loading model: {model_name}...")
+print(f"正在加载模型: {model_name} 喵...")
 model, tokenizer = FastLanguageModel.from_pretrained(
     model_name = model_name,
     max_seq_length = max_seq_length,
@@ -23,16 +24,13 @@ model, tokenizer = FastLanguageModel.from_pretrained(
 )
 
 # ==========================================
-# 2. 配置 LoRA 适配器 (保持不变，配置优秀)
+# 2. 配置 LoRA 适配器
 # ==========================================
-print("Adding LoRA adapters...")
+print("正在添加 LoRA 适配器喵...")
 model = FastLanguageModel.get_peft_model(
     model,
     r = 16, 
-    target_modules = [
-        "q_proj", "k_proj", "v_proj", "o_proj",
-        "gate_proj", "up_proj", "down_proj",
-    ],
+    target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"],
     lora_alpha = 32, 
     lora_dropout = 0, 
     bias = "none",
@@ -43,29 +41,26 @@ model = FastLanguageModel.get_peft_model(
 )
 
 # ==========================================
-# 3. 处理数据 (关键步骤：适配 ChatML)
+# 3. 处理数据 (ChatML 格式)
 # ==========================================
-from unsloth.chat_templates import get_chat_template
-
-# **修改建议：简化 chat_template 并删除 mapping**
 tokenizer = get_chat_template(
     tokenizer,
-    chat_template = "qwen", 
-    # 保持默认 mapping 即可
+    chat_template = "chatml", 
 )
 
 def formatting_prompts_func(examples):
     convos = examples["messages"]
-    # 训练时通常不需要 add_generation_prompt=True，保持 False
     texts = [tokenizer.apply_chat_template(convo, tokenize = False, add_generation_prompt = False) for convo in convos] 
     return { "text": texts }
 
-print("Loading and formatting dataset...")
-dataset = load_dataset("json", data_files = "npc_data.jsonl", split = "train")
-dataset = dataset.map(formatting_prompts_func, batched = True)
-
-# 打印一条看看格式对不对 (Debug)
-print(f"\nSample Data:\n{dataset[0]['text']}\n")
+# 确保目录下有 npc_data.jsonl，否则会报错
+print("正在处理数据喵...")
+try:
+    dataset = load_dataset("json", data_files = "npc_data.jsonl", split = "train")
+    dataset = dataset.map(formatting_prompts_func, batched = True)
+except Exception as e:
+    print(f"数据加载失败，请检查 npc_data.jsonl 是否存在！错误: {e}")
+    exit()
 
 # ==========================================
 # 4. 开始训练
@@ -77,18 +72,17 @@ trainer = SFTTrainer(
     dataset_text_field = "text",
     max_seq_length = max_seq_length,
     dataset_num_proc = 2,
-    packing = True, # **优化：启用 packing 以提高效率**
+    packing = True, 
     args = TrainingArguments(
         per_device_train_batch_size = 2,
         gradient_accumulation_steps = 4,
         warmup_steps = 10,
-        max_steps = 100, 
-        # 如果数据量大，建议换成 num_train_epochs=3
+        max_steps = 60, # 演示用，实际训练建议增加
         learning_rate = 2e-4, 
         fp16 = not torch.cuda.is_bf16_supported(),
         bf16 = torch.cuda.is_bf16_supported(),
         logging_steps = 1,
-        optim = "paged_adamw_8bit", # **优化：使用 Paged AdamW 节省显存**
+        optim = "paged_adamw_8bit", 
         weight_decay = 0.01,
         lr_scheduler_type = "linear",
         seed = 3407,
@@ -96,29 +90,20 @@ trainer = SFTTrainer(
     ),
 )
 
-print("Starting training...")
+print("开始训练喵！(Starting training...)")
 trainer_stats = trainer.train()
 
 # ==========================================
-# 5. 保存与推理测试
+# 5. 直接导出为 GGUF (用于 Ollama)
 # ==========================================
-# 保存 LoRA 权重
-model.save_pretrained("lora_model") 
-tokenizer.save_pretrained("lora_model")
-print("Model saved to 'lora_model'")
+# Unsloth 支持直接将训练好的 LoRA 合并并保存为 GGUF，无需重新加载
+export_path = "model_luna_gguf"
+print(f"正在将模型合并并导出为 GGUF 格式到 '{export_path}'，请耐心等待喵...")
 
-# 简单测试一下 (使用 Unsloth 原生推理)
-FastLanguageModel.for_inference(model) # 开启推理加速
-messages = [
-    {"role": "user", "content": "你是谁？"} # 记得测试时也要加上 System Prompt
-]
-inputs = tokenizer.apply_chat_template(
-    messages,
-    tokenize = True,
-    add_generation_prompt = True,
-    return_tensors = "pt",
-).to("cuda")
+model.save_pretrained_gguf(
+    export_path,
+    tokenizer,
+    quantization_method = "q4_k_m" # 推荐 q4_k_m 平衡速度和精度
+)
 
-outputs = model.generate(input_ids = inputs, max_new_tokens = 64, use_cache = True)
-print("\nInference Output:")
-print(tokenizer.batch_decode(outputs))
+print(f"导出完成！请查看 {export_path} 文件夹下的 GGUF 文件喵！")
