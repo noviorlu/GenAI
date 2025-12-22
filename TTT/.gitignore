@@ -3,3 +3,4 @@ unsloth_compiled_cache
 qwen_joint_ttt_ckpt
 model_hybrid_ttt_final
 outputs_ttt_hybrid
+*.jsonl

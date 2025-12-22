@@ -1,12 +1,17 @@
 # === 配置 ===
-DATASET_REPO = "yuyijiong/LongData-Corpus"
-SUBSETS = ["LongData_zh", "LongData_en"] 
+DATA_DIR = "./data"
+CPT_DATA_PATH = "./data/cpt_corpus.jsonl"
+
 
 MODEL_ID = "Qwen/Qwen3-0.6B"
 SEQ_LENGTH = 32768
-OUTPUT_DIR = "./data/cpt_longdata"
+SLIDING_WINDOW_SIZE = 4096
 
 LORA_RANK = 16
 LORA_ALPHA = 32
+
+CPT_LEARNING_RATE = 1e-5
+
 TTT_LEARNING_RATE = 0.1
 CHUNK_SIZE = 512
+

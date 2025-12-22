@@ -1,13 +1,15 @@
 import torch
-import os
+import torch.nn as nn
 from unsloth import FastLanguageModel
 from datasets import load_dataset
-from transformers import TrainingArguments, Trainer, DataCollatorForLanguageModeling
+from trl import SFTTrainer
+from transformers import TrainingArguments, DataCollatorForLanguageModeling
 from config import *
-from model import TTT_DownProj_Wrapper
+from model import *
 
-# === 1. 加载 Base Model (Frozen) ===
-print("❄️ 加载 Unsloth Base Model (4-bit, Inference Mode)...")
+# === 1. 配置与初始化 ===
+print(f"初始化 CPT 训练，窗口大小: {SLIDING_WINDOW_SIZE} 喵...")
+
 model, tokenizer = FastLanguageModel.from_pretrained(
     model_name = MODEL_ID,
     max_seq_length = SEQ_LENGTH,
@@ -15,8 +17,33 @@ model, tokenizer = FastLanguageModel.from_pretrained(
     load_in_4bit = True,
 )
 
-# === 2. TTT 手术 (Layer Replacement) ===
-print("👨‍⚕️ 执行 TTT 器官移植手术 (替换 down_proj)...")
+# === 2. 启用 Sliding Window Attention (SWA) ===
+# 强制修改模型配置以启用 SWA
+# 注意：这依赖于 Flash Attention 2 的后端支持
+if hasattr(model.config, "sliding_window"):
+    model.config.sliding_window = SLIDING_WINDOW_SIZE
+    print(f"已设置模型 config.sliding_window = {SLIDING_WINDOW_SIZE} 喵")
+else:
+    # 对于某些架构（如 Llama 3 原生不支持 SWA），可能需要强行注入属性
+    # Unsloth通常会自动处理 Flash Attention 的 window mask
+    model.config.sliding_window = SLIDING_WINDOW_SIZE
+    print(f"警告：该架构默认不显示 SWA 属性，已强制注入 config 喵。")
+
+# === 3. 添加标准 LoRA (排除 down_proj) ===
+print("添加标准 LoRA (跳过 down_proj) 喵...")
+model = FastLanguageModel.get_peft_model(
+    model,
+    r = LORA_RANK,
+    target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj"],
+    lora_alpha = LORA_ALPHA,
+    lora_dropout = 0,
+    bias = "none",
+    use_gradient_checkpointing = "unsloth",
+    random_state = 3407,
+)
+
+# === 4. 手术替换 down_proj 为 TTT Wrapper ===
+print("正在执行 TTT 手术替换 down_proj 喵...")
 
 embed_tokens = model.model.model.embed_tokens
 ttt_modules = []
@@ -25,42 +52,20 @@ device = model.device
 for i, layer in enumerate(model.model.model.layers):
     original_down = layer.mlp.down_proj
     
-    # 实例化 Wrapper
+    # 创建 Wrapper
     wrapper = TTT_DownProj_Wrapper(original_down, embed_tokens)
     
-    # 关键：开启 CPT 模式 (Target 来自 Hidden States 而不是 Embeddings)
-    # 请确保你在 model.py 里实现了这个属性切换，或者默认行为
-    if hasattr(wrapper, 'use_hidden_states_for_target'):
-        wrapper.use_hidden_states_for_target = True 
+    # 将 Wrapper 移动到正确设备
+    wrapper.to(device) 
     
-    # 移动到 GPU
-    wrapper.to(device)
-    
-    # 替换
+    # 替换层
     layer.mlp.down_proj = wrapper
     ttt_modules.append(wrapper)
 
-print(f"✅ 手术完成！共替换 {len(ttt_modules)} 层。")
+print(f"所有 {len(ttt_modules)} 个 TTT 层已就位 喵！")
 
-# === 3. 梯度冻结与解冻 (Precision Surgery) ===
-print("🔒 正在冻结全模型...")
-for name, param in model.named_parameters():
-    param.requires_grad = False
-
-print("🔓 正在解冻 TTT Meta-Parameters...")
-trainable_count = 0
-for mod in ttt_modules:
-    # 必须显式开启梯度
-    mod.init_A.requires_grad = True
-    mod.init_B.requires_grad = True
-    mod.target_conv.weight.requires_grad = True
-    mod.target_projector.weight.requires_grad = True
-    trainable_count += 4 # 每个层有4组参数
-
-print(f"🔥 TTT 参数已激活！(共 {trainable_count} 组 Tensor 处于训练模式)")
-
-# === 4. 注册 Hook (数据注入) ===
-# CPT 模式下，Trainer 会传 input_ids 进来
+# === 5. 注册 Hook (Input Capture) ===
+# TTT 需要原始 input_ids 来生成 Target V，这对 CPT 至关重要
 def input_capture_hook(module, args, kwargs):
     input_ids = None
     if 'input_ids' in kwargs:
@@ -72,81 +77,81 @@ def input_capture_hook(module, args, kwargs):
             input_ids = args[0]
             
     if input_ids is not None:
-        # 确保 input_ids 和模型在同一设备
-        if input_ids.device != device:
-             input_ids = input_ids.to(device)
-             
         for mod in ttt_modules:
             mod.current_input_ids = input_ids
 
 model.register_forward_pre_hook(input_capture_hook, with_kwargs=True)
 
-# === 5. 加载数据 ===
-print("📂 加载 CPT JSONL 数据集...")
-# "json" builder 会自动处理 jsonl
-dataset = load_dataset("json", data_files="./data/cpt_dataset.jsonl", split="train")
+# === 6. 梯度管理 ===
+# 开启 TTT 参数的梯度
+for mod in ttt_modules:
+    mod.init_A.requires_grad = True
+    mod.init_B.requires_grad = True
+    # 注意：你的 model.py 中使用的是 target_projector (Linear)，而非 target_conv
+    if hasattr(mod, 'target_projector'):
+        mod.target_projector.weight.requires_grad = True
+    
+# 验证可训练参数
+print("\n=== 可训练参数确认 ===")
+trainable_names = [n for n, p in model.named_parameters() if p.requires_grad]
+print(f"Total trainable tensors: {len(trainable_names)}")
+if any("target_projector" in n for n in trainable_names):
+    print("TTT Meta-Network (Target Projector) 梯度已开启 喵！")
 
-# 转换为 PyTorch 格式 (虽然 Trainer 会处理，但显式转换更安全)
-dataset.set_format(type="torch", columns=["input_ids"])
+# === 7. CPT 数据处理 ===
+# CPT 通常使用无监督文本。我们加载 jsonl 文件中的 "text" 字段。
+dataset = load_dataset("json", data_files = CPT_DATA_PATH, split = "train")
 
-# === 6. Trainer 配置 ===
-# 因为我们已经有了 input_ids 且长度固定，可以直接用 Trainer
-# 不需要 SFTTrainer 的 chat template 逻辑
-training_args = TrainingArguments(
-    per_device_train_batch_size = 1, # TTT 必须 Batch=1 (或者是 sequence packing=False)
-    gradient_accumulation_steps = 8, # 累计梯度以稳定 Meta-Learning
-    max_steps = 100, # 测试用，正式跑请加大
-    learning_rate = 1e-4, # TTT 初始参数通常需要稍大的 LR
-    fp16 = not torch.cuda.is_bf16_supported(),
-    bf16 = torch.cuda.is_bf16_supported(),
-    logging_steps = 1,
-    optim = "adamw_torch",
-    output_dir = "outputs_ttt_cpt",
-    save_strategy = "steps",
-    save_steps = 50,
-    # 关键：禁用 remove_unused_columns，否则 Trainer 可能会把 input_ids 丢掉
-    remove_unused_columns = False, 
-)
+# 定义 CPT 格式化函数：直接返回文本即可，不需要 Chat Template
+# Unsloth/SFTTrainer 会自动处理 EOS token 的添加
+def formatting_prompts_func(examples):
+    return { "text": examples["text"] }
 
-# 使用 DataCollatorForLanguageModeling，mlm=False 表示 Causal LM (Next Token Prediction)
-data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+dataset = dataset.map(formatting_prompts_func, batched=True)
 
-trainer = Trainer(
+# === 8. 训练配置 ===
+trainer = SFTTrainer(
     model = model,
-    args = training_args,
+    tokenizer = tokenizer,
     train_dataset = dataset,
-    data_collator = data_collator,
+    dataset_text_field = "text",
+    max_seq_length = SEQ_LENGTH,
+    dataset_num_proc = 4,
+    packing = True, # CPT 强烈建议开启 Packing 以提高效率
+    args = TrainingArguments(
+        per_device_train_batch_size = 2,
+        gradient_accumulation_steps = 4,
+        warmup_steps = 10,
+        max_steps = 200, # 根据数据集大小调整 epoch 或 steps
+        learning_rate = CPT_LEARNING_RATE,
+        fp16 = not torch.cuda.is_bf16_supported(),
+        bf16 = torch.cuda.is_bf16_supported(),
+        logging_steps = 1,
+        optim = "adamw_torch",
+        weight_decay = 0.01,
+        lr_scheduler_type = "cosine",
+        output_dir = "outputs_ttt_cpt",
+        seed = 3407,
+    ),
 )
 
-# === 7. 训练与监控 ===
-print("🕵️‍♂️ W_target 监控已就绪...")
-w_target_before = ttt_modules[0].target_projector.weight.clone().detach()
+# === 9. 训练前指纹记录 ===
+target_proj = ttt_modules[0].target_projector
+w_before = target_proj.weight.clone().detach()
 
-print("🚀 开始 Continuous Pre-training (TTT Only) 喵！")
+print("开始 CPT (Continued Pre-Training) 喵！")
 trainer.train()
 
-# === 8. 验证 ===
-w_target_after = ttt_modules[0].target_projector.weight.clone().detach()
-diff = (w_target_after - w_target_before).abs().sum().item()
-
-print(f"\n=== 训练结束报告 ===")
+# === 10. 验证与保存 ===
+w_after = target_proj.weight.clone().detach()
+diff = (w_after - w_before).abs().sum().item()
+print(f"\n=== CPT 训练结束验证 ===")
+print(f"W_target 权重变化量 (L1): {diff:.6f}")
 if diff > 0:
-    print(f"✅ 成功：W_target 发生更新 (L1 Diff: {diff:.4f})")
-    print("🧠 Luna 的海马体 (General Memory) 正在形成！")
+    print("TTT Meta-Learning 在 CPT 阶段生效正常 喵！")
 else:
-    print("❌ 警告：W_target 未更新，请检查梯度链！")
+    print("警告：TTT 权重未更新，请检查梯度链！")
 
-# === 9. 保存 ===
-# Unsloth 的 save_pretrained 主要是存 LoRA，我们这里是存自定义层
-# 建议手动保存 TTT 层的 state_dict
-print("💾 保存 TTT 权重...")
-ttt_state_dict = {}
-for i, mod in enumerate(ttt_modules):
-    # 只保存可训练的参数
-    ttt_state_dict[f"layer_{i}.init_A"] = mod.init_A.cpu()
-    ttt_state_dict[f"layer_{i}.init_B"] = mod.init_B.cpu()
-    ttt_state_dict[f"layer_{i}.target_conv"] = mod.target_conv.state_dict()
-    ttt_state_dict[f"layer_{i}.target_projector"] = mod.target_projector.state_dict()
-
-torch.save(ttt_state_dict, "outputs_ttt_cpt/ttt_meta_params.pt")
-print("✅ TTT Meta-Params 已保存至 outputs_ttt_cpt/ttt_meta_params.pt 喵！")
+model.save_pretrained("model_cpt_ttt_final")
+tokenizer.save_pretrained("model_cpt_ttt_final")
+print("CPT 模型已保存 喵！")
