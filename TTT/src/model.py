@@ -21,14 +21,14 @@ class TTT_DownProj_Wrapper(nn.Module):
         
         # === Meta-Parameters (Learnable) ===
         # init_A: (h, r) initialized to 0
-        self.init_A = nn.Parameter(torch.zeros(self.h_dim, LORA_RANK))
+        self.init_A = nn.Parameter(torch.zeros(self.h_dim, LORA_RANK, dtype=torch.bfloat16))
         # init_B: (r, k) initialized with small noise
-        self.init_B = nn.Parameter(torch.randn(LORA_RANK, self.k_dim) * 0.02)
+        self.init_B = nn.Parameter(torch.randn(LORA_RANK, self.k_dim, dtype=torch.bfloat16) * 0.02)
         
         # Target Generation Network (W_target)
         # Assuming embedding dim matches model input dim
         embed_dim = embed_tokens.weight.shape[1]
-        self.target_projector = nn.Linear(embed_dim, self.h_dim, bias=False)
+        self.target_projector = nn.Linear(embed_dim, self.h_dim, bias=False, dtype=torch.bfloat16)
         
         # Scaling
         self.scaling = LORA_ALPHA / LORA_RANK
@@ -42,38 +42,24 @@ class TTT_DownProj_Wrapper(nn.Module):
         Delta A = V^T @ (Z @ B^T)
         Delta B = (V @ A)^T @ Z
         """
-        # Ensure float32 for stability during meta-training
-        orig_dtype = Z.dtype
-        A_f, B_f = A.float(), B.float()
-        Z_f, V_f = Z.float(), V.float()
-
+        # 输入 A, B, Z, V 全部已经是 bfloat16，直接计算即可
         # 1. Project Input: (Batch, k) @ (k, r) -> (Batch, r)
-        projected_input = torch.matmul(Z_f, B_f.t()) 
+        projected_input = torch.matmul(Z, B.t()) 
         
         # 2. Gradient for A: (h, Batch) @ (Batch, r) -> (h, r)
-        delta_A = torch.matmul(V_f.transpose(1, 2), projected_input)
+        delta_A = torch.matmul(V.transpose(1, 2), projected_input)
         
         # 3. Project Error: (Batch, h) @ (h, r) -> (Batch, r)
-        projected_error = torch.matmul(V_f, A_f)
+        projected_error = torch.matmul(V, A)
         
         # 4. Gradient for B: (r, Batch) @ (Batch, k) -> (r, k)
-        delta_B = torch.matmul(projected_error.transpose(1, 2), Z_f)
-        
-        # === 探针 1: 验证 TTT 更新量 ===
-        # 如果这里打印出 0，说明 TTT 没效果
-        if not getattr(self, "_logged_delta_stats", False):
-            print(f"   [DEBUG] Inner Loop Stats:")
-            print(f"   -> Z norm: {Z.norm().item():.4f}")
-            print(f"   -> V norm (Target): {V.norm().item():.4f} (如果为0，说明W_target没工作)")
-            print(f"   -> Delta A norm: {delta_A.norm().item():.4f}")
-            self._logged_delta_stats = True # 只打印一次防止刷屏
-
-        return delta_A.to(orig_dtype), delta_B.to(orig_dtype)
+        delta_B = torch.matmul(projected_error.transpose(1, 2), Z)
+        return delta_A, delta_B
 
     def forward(self, x):
-        # x is the hidden state Z (Batch, Seq, k_dim)
+        # x is (Batch, Seq, k_dim) in BFloat16
         
-        # 1. Base Forward (Frozen Unsloth Kernel)
+        # 1. Base Forward
         base_out = self.base_layer(x)
         
         # If not training or no inputs captured, act as static LoRA
