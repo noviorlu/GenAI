@@ -29,7 +29,10 @@ class TTT_DownProj_Wrapper(nn.Module):
         # Assuming embedding dim matches model input dim
         embed_dim = embed_tokens.weight.shape[1]
         self.target_projector = nn.Linear(embed_dim, self.h_dim, bias=False, dtype=torch.bfloat16)
-        
+        if embed_dim == self.h_dim:
+            nn.init.eye_(self.target_projector.weight)
+        else:
+            nn.init.orthogonal_(self.target_projector.weight)
         # Scaling
         self.scaling = LORA_ALPHA / LORA_RANK
         
@@ -157,13 +160,31 @@ class TTT_DownProj_Wrapper(nn.Module):
         acc_dA_flat = acc_dA.view(-1, self.h_dim, LORA_RANK)
         acc_dB_flat = acc_dB.view(-1, LORA_RANK, self.k_dim)
         
+
+        
+        # === Delta Clipping ===
+        # 1. 计算原始的 Delta A (Update Amount)
+        raw_delta_A = lr * acc_dA_flat
+        # 计算 Frobenius Norm over (h, r)
+        norm_A = torch.norm(raw_delta_A, p='fro', dim=(-2, -1), keepdim=True)
+        # 计算缩放系数: min(1.0, threshold / norm)
+        scale_A = torch.clamp(CLIP_THRESHOLD / (norm_A + 1e-12), max=1.0)
+        # 应用缩放
+        final_delta_A = raw_delta_A * scale_A
+        
+        # 2. 计算原始的 Delta B (Update Amount)
+        raw_delta_B = lr * acc_dB_flat
+        norm_B = torch.norm(raw_delta_B, p='fro', dim=(-2, -1), keepdim=True)
+        scale_B = torch.clamp(CLIP_THRESHOLD / (norm_B + 1e-12), max=1.0)
+        final_delta_B = raw_delta_B * scale_B
+
         # Expand Init params to match batch size: (B*N, h, r)
         init_A_exp = self.init_A.unsqueeze(0).expand(acc_dA_flat.shape[0], -1, -1)
         init_B_exp = self.init_B.unsqueeze(0).expand(acc_dB_flat.shape[0], -1, -1)
         
         # Calculate Effective Weights
-        A_eff = init_A_exp - lr * acc_dA_flat
-        B_eff = init_B_exp - lr * acc_dB_flat
+        A_eff = init_A_exp - final_delta_A
+        B_eff = init_B_exp - final_delta_B
         
         # LoRA Forward: Z @ B_eff^T @ A_eff^T
         # Z_chunks: (B*N, Chunk_Size, k)

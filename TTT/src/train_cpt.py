@@ -1,23 +1,71 @@
 import os
 import torch
 import torch.nn as nn
+import wandb
 from unsloth import FastLanguageModel
 from datasets import load_dataset
 from trl import SFTTrainer
-from transformers import TrainingArguments
+from transformers import TrainingArguments, TrainerCallback
+from transformers.trainer_utils import get_last_checkpoint
 from config import *
 from model import *
-from transformers.trainer_utils import get_last_checkpoint
 
 # === Control Flag ===
-USE_TTT = True
+USE_TTT = True  # True = SWA+LoRA+TTT | False = SWA+LoRA
 
-# 根据 Flag 调整 WandB 命名，方便追踪实验
-os.environ["WANDB_PROJECT"] = "Luna-Project" 
+# === Environment Setup ===
+os.environ["WANDB_PROJECT"] = "Luna-Project"
 method_tag = "TTT" if USE_TTT else "NativeLoRA"
 os.environ["WANDB_NAME"] = f"{method_tag}_CPT_qwen3_0.6B_2000steps"
+# 隔离 Output Dir 以防止权重混淆
+output_dir_name = "outputs_ttt_cpt" if USE_TTT else "outputs_lora_cpt"
 
-# === 1. 配置与初始化 ===
+# ==========================================
+# 0. 自定义 Callback: TTT 参数自动保存
+# ==========================================
+class TTTSaveCallback(TrainerCallback):
+    """
+    HuggingFace Trainer 默认只保存 Adapter (LoRA) 和 Base Model。
+    我们需要这个 Callback 在每次保存 Checkpoint 时，强制把 TTT 的自定义参数也存下来。
+    """
+    def on_save(self, args, state, control, **kwargs):
+        checkpoint_folder = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
+        model = kwargs['model']
+        
+        # 提取 TTT 专属参数
+        ttt_state_dict = {}
+        for name, param in model.named_parameters():
+            # 过滤条件：匹配你的 TTT Wrapper 中的参数名
+            if any(k in name for k in ["target_projector", "init_A", "init_B", "ttt_layer"]):
+                ttt_state_dict[name] = param.cpu()
+        
+        if len(ttt_state_dict) > 0:
+            save_path = os.path.join(checkpoint_folder, "ttt_weights.pt")
+            torch.save(ttt_state_dict, save_path)
+            print(f"\n[TTT Callback] 已额外保存 {len(ttt_state_dict)} 个 TTT 张量至 {save_path} 喵。")
+
+class TokenTrackingCallback(TrainerCallback):
+    """
+    绕过 Trainer 的 logging 机制，直接向 wandb 后端发送数据。
+    """
+    def __init__(self, seq_length):
+        self.seq_length = seq_length
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if state.global_step % args.logging_steps == 0:
+            tokens_per_step = (
+                args.per_device_train_batch_size * args.gradient_accumulation_steps * args.world_size * self.seq_length
+            )
+            current_tokens = state.global_step * tokens_per_step
+            
+            if wandb.run is not None:
+                wandb.log({
+                    "train/tokens_trained": current_tokens,
+                    "global_step": state.global_step
+                })
+# ==========================================
+# 1. 模型初始化
+# ==========================================
 print(f"初始化 CPT 训练 ({method_tag})，窗口大小: {SLIDING_WINDOW_SIZE} 喵...")
 
 model, tokenizer = FastLanguageModel.from_pretrained(
@@ -27,21 +75,18 @@ model, tokenizer = FastLanguageModel.from_pretrained(
     load_in_4bit = True,
 )
 
-# === 2. 启用 Sliding Window Attention (SWA) ===
-# 强制修改模型配置以启用 SWA
-# 注意：这依赖于 Flash Attention 2 的后端支持
+# ==========================================
+# 2. 启用 Sliding Window Attention (SWA)
+# ==========================================
 if hasattr(model.config, "sliding_window"):
     model.config.sliding_window = SLIDING_WINDOW_SIZE
-    print(f"已设置模型 config.sliding_window = {SLIDING_WINDOW_SIZE} 喵")
 else:
-    # 对于某些架构（如 Llama 3 原生不支持 SWA），可能需要强行注入属性
-    # Unsloth通常会自动处理 Flash Attention 的 window mask
     model.config.sliding_window = SLIDING_WINDOW_SIZE
     print(f"警告：该架构默认不显示 SWA 属性，已强制注入 config 喵。")
 
-# === 3. 动态配置 LoRA ===
-# 如果使用 TTT，我们手动处理 down_proj，所以要把它从 LoRA 列表排除
-# 如果使用 原生 LoRA，down_proj 应该被包含在内
+# ==========================================
+# 3. 动态配置 LoRA
+# ==========================================
 target_modules = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj"]
 
 if not USE_TTT:
@@ -63,7 +108,9 @@ model = FastLanguageModel.get_peft_model(
     random_state = 3407,
 )
 
-# === 4. TTT 手术与 Hook (仅在 USE_TTT=True 时执行) ===
+# ==========================================
+# 4. TTT 手术 (Architecture Surgery)
+# ==========================================
 ttt_modules = [] # 初始化为空列表，防止后面引用报错
 
 if USE_TTT:
@@ -106,7 +153,9 @@ if USE_TTT:
 else:
     print("Flag check: 跳过 TTT 手术与 Hook 注册 喵。")
 
-# === 6. 梯度管理 ===
+# ==========================================
+# 5. 梯度管理
+# ==========================================
 if USE_TTT:
     # 开启 TTT 参数的梯度
     for mod in ttt_modules:
@@ -114,33 +163,26 @@ if USE_TTT:
         mod.init_B.requires_grad = True
         if hasattr(mod, 'target_projector'):
             mod.target_projector.weight.requires_grad = True
-else:
-    # 确保 standard LoRA 的梯度是正常的（Unsloth 通常已处理，但为了保险）
-    pass
 
 # 验证可训练参数
 print("\n=== 可训练参数确认 ===")
 trainable_names = [n for n, p in model.named_parameters() if p.requires_grad]
 print(f"Total trainable tensors: {len(trainable_names)}")
+if USE_TTT and any("target_projector" in n for n in trainable_names):
+    print("状态: TTT Meta-Network 梯度正常开启 喵！")
 
-# 简单检查一下关键层是否在训练列表中
-if USE_TTT:
-    if any("target_projector" in n for n in trainable_names):
-        print("检查通过: TTT Meta-Network 梯度已开启 喵！")
-else:
-    if any("down_proj.lora_A" in n for n in trainable_names):
-        print("检查通过: 原生 LoRA down_proj 梯度已开启 喵！")
-
-# === 7. CPT 数据处理 (不变) ===
+# ==========================================
+# 6. 数据加载
+# ==========================================
 dataset = load_dataset("json", data_files = CPT_DATA_PATH, split = "train")
 def formatting_prompts_func(examples):
     return { "text": examples["text"] }
 dataset = dataset.map(formatting_prompts_func, batched=True)
 
-# === 8. 训练配置 (注意 output_dir 隔离) ===
-# 极其重要：TTT 和 LoRA 的权重结构完全不同，不能混用 output_dir
-output_dir_name = "outputs_ttt_cpt" if USE_TTT else "outputs_lora_cpt"
-
+# ==========================================
+# 7. Trainer 配置
+# ==========================================
+token_callback = TokenTrackingCallback(seq_length=SEQ_LENGTH)
 trainer = SFTTrainer(
     model = model,
     tokenizer = tokenizer,
@@ -150,10 +192,10 @@ trainer = SFTTrainer(
     dataset_num_proc = 4,
     packing = True, 
     args = TrainingArguments(
-        per_device_train_batch_size = 2,
+        per_device_train_batch_size = 16,
         gradient_accumulation_steps = 4,
         warmup_steps = 10,
-        max_steps = 100, 
+        max_steps = 600, 
         learning_rate = CPT_LEARNING_RATE,
         fp16 = not torch.cuda.is_bf16_supported(),
         bf16 = torch.cuda.is_bf16_supported(),
@@ -163,28 +205,53 @@ trainer = SFTTrainer(
         lr_scheduler_type = "cosine",
         output_dir = output_dir_name, # 动态修改路径
         seed = 3407,
+        save_strategy="steps",
+        save_steps=200,
     ),
+    # 仅在 TTT 模式下注入回调
+    callbacks=[TTTSaveCallback, token_callback] if USE_TTT else [token_callback],
 )
 
-# === 9. 执行训练 ===
+# ==========================================
+# 8. 执行训练 (含 Resume 修复逻辑)
+# ==========================================
 print(f"开始 CPT 训练, 模式: {method_tag} 喵！")
 
-# 从对应的目录查找 checkpoint
 last_checkpoint = get_last_checkpoint(output_dir_name)
 
 if last_checkpoint:
-    print(f"找到之前的训练进度: {last_checkpoint}")
-    try:
-        trainer.train(resume_from_checkpoint=True)
-    except Exception as e:
-        print(f"加载 Checkpoint 失败 (可能是架构不匹配): {e}")
-        print("建议删除旧的 output_dir 或手动指定 resume_from_checkpoint=False 喵。")
-        raise e
+    print(f"发现历史 Checkpoint: {last_checkpoint}")
+    # === 关键修复: 手动加载 TTT 权重 ===
+    if USE_TTT:
+        ttt_weights_path = os.path.join(last_checkpoint, "ttt_weights.pt")
+        if os.path.exists(ttt_weights_path):
+            print(f"正在恢复 TTT 状态 from: {ttt_weights_path}...")
+            # map_location='cpu' 防止显存激增，load_state_dict 会自动处理 device
+            ttt_state_dict = torch.load(ttt_weights_path, map_location='cpu')
+            
+            # strict=False 是必须的，因为 model 包含 LoRA 和 Base weights，而 ttt_state_dict 只有 TTT 部分
+            keys = model.load_state_dict(ttt_state_dict, strict=False)
+            print(f"TTT 权重恢复成功。Unexpected keys: {len(keys.unexpected_keys)}")
+        else:
+            print("【严重警告】找到 Checkpoint 但缺失 ttt_weights.pt！TTT 层将重置为随机初始化！")
+    trainer.train(resume_from_checkpoint=True)
 else:
+    print("未找到 Checkpoint，开始全新训练。")
     trainer.train()
 
-# === 10. 保存 ===
+# ==========================================
+# 9. 最终保存
+# ==========================================
+print(f"\n=== 训练结束，正在保存 ===")
 save_name = "model_cpt_ttt_final" if USE_TTT else "model_cpt_lora_final"
 model.save_pretrained(save_name)
 tokenizer.save_pretrained(save_name)
-print(f"模型已保存至 {save_name} 喵！")
+if USE_TTT:
+    final_ttt_path = os.path.join(save_name, "ttt_weights.pt")
+    ttt_state_dict = {}
+    for name, param in model.named_parameters():
+        if any(k in name for k in ["target_projector", "init_A", "init_B", "ttt_layer"]):
+            ttt_state_dict[name] = param.cpu()
+    torch.save(ttt_state_dict, final_ttt_path)
+    print(f"TTT 最终权重已独立保存至: {final_ttt_path}")
+print(f"所有工作完成！模型位于: {save_name} 喵！")
