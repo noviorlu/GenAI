@@ -4,7 +4,7 @@ import torch.nn as nn
 import wandb
 from unsloth import FastLanguageModel
 from datasets import load_dataset
-from trl import SFTTrainer
+from trl import SFTTrainer, SFTConfig
 from transformers import TrainingArguments, TrainerCallback
 from transformers.trainer_utils import get_last_checkpoint
 from config import *
@@ -23,6 +23,54 @@ output_dir_name = "outputs_ttt_cpt" if USE_TTT else "outputs_lora_cpt"
 # ==========================================
 # 0. 自定义 Callback: TTT 参数自动保存
 # ==========================================
+class TTTDebugCallback(TrainerCallback):
+    """
+    专门用于诊断 TTT 模块是否'死亡' (Collapse) 的回调函数。
+    """
+    def on_log(self, args, state, control, model=None, logs=None, **kwargs):
+        if model is None: return
+        
+        ttt_metrics = {
+            "ttt/avg_scale": [],
+            "ttt/avg_delta_norm": [],
+            "ttt/avg_V_norm": [],
+            "ttt/projector_grad_norm": []
+        }
+        
+        found_ttt = False
+        # 遍历所有模块寻找 TTT Wrapper
+        for name, module in model.named_modules():
+            if isinstance(module, TTT_DownProj_Wrapper):
+                found_ttt = True
+                # 1. 读取 forward 期间缓存的运行时指标
+                if hasattr(module, 'last_debug_metrics') and module.last_debug_metrics:
+                    for k, v in module.last_debug_metrics.items():
+                        if "delta_norm" in k: ttt_metrics["ttt/avg_delta_norm"].append(v)
+                        if "V_norm" in k: ttt_metrics["ttt/avg_V_norm"].append(v)
+                        if "clip_ratio" in k: 
+                            # 如果你需要监控 clip_ratio，也可以加进去，这里演示加个 key
+                            if "ttt/avg_clip_ratio" not in ttt_metrics: ttt_metrics["ttt/avg_clip_ratio"] = []
+                            ttt_metrics["ttt/avg_clip_ratio"].append(v)
+                
+                # 2. 检查梯度流
+                if hasattr(module, 'target_projector') and module.target_projector.weight.grad is not None:
+                    grad_norm = module.target_projector.weight.grad.norm().item()
+                    ttt_metrics["ttt/projector_grad_norm"].append(grad_norm)
+        
+        if not found_ttt:
+            return
+
+        # 计算平均值
+        log_dict = {}
+        for k, v_list in ttt_metrics.items():
+            if len(v_list) > 0:
+                log_dict[k] = sum(v_list) / len(v_list)
+        
+        # === 关键修改 ===
+        # 不要手动传 step，防止与 Trainer 冲突
+        if wandb.run is not None:
+            wandb.log(log_dict)
+
 class TTTSaveCallback(TrainerCallback):
     """
     HuggingFace Trainer 默认只保存 Adapter (LoRA) 和 Base Model。
@@ -73,8 +121,15 @@ model, tokenizer = FastLanguageModel.from_pretrained(
     max_seq_length = SEQ_LENGTH,
     dtype = None,
     load_in_4bit = True,
+    attn_implementation="flash_attention_2",
 )
-
+# [Fix] Qwen 默认没有 pad_token，这会导致 SFTTrainer 的 packing 逻辑失效或回退到 1024
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
+    # 某些版本的 TRL/Unsloth 需要明确更新 pad_token_id
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+# [Fix] 显式告诉 Tokenizer 它的最大长度，防止 SFTTrainer 读取 config.json 中的旧值
+tokenizer.model_max_length = SEQ_LENGTH
 # ==========================================
 # 2. 启用 Sliding Window Attention (SWA)
 # ==========================================
@@ -174,42 +229,49 @@ if USE_TTT and any("target_projector" in n for n in trainable_names):
 # ==========================================
 # 6. 数据加载
 # ==========================================
-dataset = load_dataset("json", data_files = CPT_DATA_PATH, split = "train")
-def formatting_prompts_func(examples):
-    return { "text": examples["text"] }
-dataset = dataset.map(formatting_prompts_func, batched=True)
+dataset = load_dataset("json", data_files=CPT_DATA_PATH, split="train")
+print(f"Dataset Loaded. Samples: {len(dataset)}")
+
 
 # ==========================================
 # 7. Trainer 配置
 # ==========================================
 token_callback = TokenTrackingCallback(seq_length=SEQ_LENGTH)
+# [PhD Fix] 使用 SFTConfig 替代 TrainingArguments
+# 新版 TRL 要求 packing, max_seq_length 等参数必须通过 SFTConfig 传递，
+# 否则在构建 ConstantLengthDataset 时会静默回退到 1024。
+sft_config = SFTConfig(
+    output_dir = output_dir_name,
+    max_seq_length = SEQ_LENGTH,
+    packing = True,
+    dataset_text_field = "text",
+    dataset_num_proc = 32,
+    
+    per_device_train_batch_size = 1,  
+    gradient_accumulation_steps = 4,
+    
+    warmup_steps = 10,
+    max_steps = 600,
+    learning_rate = CPT_LEARNING_RATE,
+    fp16 = not torch.cuda.is_bf16_supported(),
+    bf16 = torch.cuda.is_bf16_supported(),
+    logging_steps = 1,
+    optim = "adamw_torch",
+    weight_decay = 0.01,
+    lr_scheduler_type = "cosine",
+    seed = 3407,
+    save_strategy = "steps",
+    save_steps = 200,
+    report_to = "wandb",
+    remove_unused_columns = True, 
+)
+
 trainer = SFTTrainer(
     model = model,
     tokenizer = tokenizer,
     train_dataset = dataset,
-    dataset_text_field = "text",
-    max_seq_length = SEQ_LENGTH,
-    dataset_num_proc = 4,
-    packing = True, 
-    args = TrainingArguments(
-        per_device_train_batch_size = 16,
-        gradient_accumulation_steps = 4,
-        warmup_steps = 10,
-        max_steps = 600, 
-        learning_rate = CPT_LEARNING_RATE,
-        fp16 = not torch.cuda.is_bf16_supported(),
-        bf16 = torch.cuda.is_bf16_supported(),
-        logging_steps = 1,
-        optim = "adamw_torch",
-        weight_decay = 0.01,
-        lr_scheduler_type = "cosine",
-        output_dir = output_dir_name, # 动态修改路径
-        seed = 3407,
-        save_strategy="steps",
-        save_steps=200,
-    ),
-    # 仅在 TTT 模式下注入回调
-    callbacks=[TTTSaveCallback, token_callback] if USE_TTT else [token_callback],
+    args = sft_config, # 将 SFTConfig 传入 args
+    callbacks=[TTTSaveCallback, token_callback, TTTDebugCallback] if USE_TTT else [token_callback],
 )
 
 # ==========================================
@@ -237,6 +299,24 @@ if last_checkpoint:
     trainer.train(resume_from_checkpoint=True)
 else:
     print("未找到 Checkpoint，开始全新训练。")
+    print("\n=== [DEBUG] 检查 DataLoader 输出长度 ===")
+    # 模拟 Trainer 的 DataLoader
+    train_dataloader = trainer.get_train_dataloader()
+    # 获取第一个 Batch
+    for batch in train_dataloader:
+        input_ids = batch['input_ids']
+        print(f"实际输入 Batch Shape: {input_ids.shape}")
+        print(f"实际输入 Sequence Length: {input_ids.shape[1]}")
+        print(f"Trainer Config Max Length: {trainer.args.max_seq_length if hasattr(trainer.args, 'max_seq_length') else 'Unknown'}")
+        # 或者检查 processing_class (Tokenizer)
+        print(f"Trainer Tokenizer Max Length: {trainer.processing_class.model_max_length}")
+        if input_ids.shape[1] < 2048:
+            print("❌ 警告：数据依然很短！Packing 没有生效！")
+            print("可能原因：Tokenizer 限制、数据源本身过短且不可拼接、或 Unsloth 优化冲突。")
+        else:
+            print("✅ 数据长度正常，看起来已经 Pack 好了。")
+        break
+    print("========================================\n")
     trainer.train()
 
 # ==========================================
