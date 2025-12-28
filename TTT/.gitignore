@@ -8,3 +8,4 @@ model_cpt_lora_final
 outputs_lora_cpt
 model_cpt_ttt_final
 *.jsonl
+data/*

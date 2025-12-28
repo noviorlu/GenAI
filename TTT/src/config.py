@@ -19,6 +19,7 @@ if not os.path.exists(BASE_OUTPUT_DIR):
 # 你的其他配置
 DATA_DIR = "./data"
 CPT_DATA_PATH = os.path.join(DATA_DIR, "cpt_corpus.jsonl")
+PROCESSED_DATA_PATH = os.path.join(DATA_DIR, "processed_cpt_dataset")
 
 MODEL_ID = "Qwen/Qwen3-0.6B"
 SEQ_LENGTH = 32768

@@ -227,9 +227,21 @@ if USE_TTT and any("target_projector" in n for n in trainable_names):
     print("状态: TTT Meta-Network 梯度正常开启 喵！")
 
 # ==========================================
-# 6. 数据加载
+# 6. 数据加载 (智能缓存版)
 # ==========================================
-dataset = load_dataset("json", data_files=CPT_DATA_PATH, split="train")
+import os
+from datasets import load_from_disk
+
+# 检查是否存在预处理好的数据文件夹
+if os.path.exists(PROCESSED_DATA_PATH):
+    print(f"🚀 发现预处理数据集: {PROCESSED_DATA_PATH}，直接加载！(跳过 Tokenizing)")
+    dataset = load_from_disk(PROCESSED_DATA_PATH)
+    is_pre_packed = True # 标记：数据已经是打包好的了
+else:
+    print(f"🐢 未发现预处理数据，加载原始 JSONL: {CPT_DATA_PATH} (需要在线处理)")
+    dataset = load_dataset("json", data_files=CPT_DATA_PATH, split="train")
+    is_pre_packed = False
+
 print(f"Dataset Loaded. Samples: {len(dataset)}")
 
 
@@ -237,21 +249,26 @@ print(f"Dataset Loaded. Samples: {len(dataset)}")
 # 7. Trainer 配置
 # ==========================================
 token_callback = TokenTrackingCallback(seq_length=SEQ_LENGTH)
-# [PhD Fix] 使用 SFTConfig 替代 TrainingArguments
-# 新版 TRL 要求 packing, max_seq_length 等参数必须通过 SFTConfig 传递，
-# 否则在构建 ConstantLengthDataset 时会静默回退到 1024。
+num_proc = os.cpu_count()
+
+if num_proc is None: num_proc = 4
+# [Logic Switch] 
+# 如果加载的是预处理数据 (is_pre_packed=True)，则 packing=False (因为已经 pack 过了)
+# 如果加载的是原始数据 (is_pre_packed=False)，则 packing=True (让 Trainer 去做)
+should_pack = not is_pre_packed
+
 sft_config = SFTConfig(
     output_dir = output_dir_name,
     max_seq_length = SEQ_LENGTH,
-    packing = True,
-    dataset_text_field = "text",
-    dataset_num_proc = 32,
-    
+    packing = should_pack, 
+    dataset_text_field = "text" if should_pack else None,
+    dataset_num_proc = num_proc,
+
     per_device_train_batch_size = 1,  
     gradient_accumulation_steps = 4,
     
-    warmup_steps = 10,
-    max_steps = 600,
+    warmup_ratio = 0.05,
+    num_train_epochs = 1,           # 跑满整个数据集 1 遍 喵
     learning_rate = CPT_LEARNING_RATE,
     fp16 = not torch.cuda.is_bf16_supported(),
     bf16 = torch.cuda.is_bf16_supported(),
