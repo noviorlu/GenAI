@@ -26,7 +26,7 @@ def clip_tt_delta_(deltas, max_norm, norm_type=2.0):
     return total_norm, clipped_deltas
 
 class TTT_DownProj_Wrapper(nn.Module):
-    def __init__(self, base_layer, embed_tokens=None):
+    def __init__(self, base_layer):
         super().__init__()
         self.base_layer = base_layer
         self.h_dim = base_layer.out_features

@@ -170,14 +170,12 @@ ttt_modules = [] # 初始化为空列表，防止后面引用报错
 
 if USE_TTT:
     print("Flag check: 正在执行 TTT 手术替换 down_proj 喵...")
-    embed_tokens = model.model.model.embed_tokens
     device = model.device 
-
     for i, layer in enumerate(model.model.model.layers):
         original_down = layer.mlp.down_proj
         
         # 创建 Wrapper
-        wrapper = TTT_DownProj_Wrapper(original_down, embed_tokens)
+        wrapper = TTT_DownProj_Wrapper(original_down)
         wrapper.to(device) 
         
         # 替换层
@@ -185,26 +183,6 @@ if USE_TTT:
         ttt_modules.append(wrapper)
 
     print(f"所有 {len(ttt_modules)} 个 TTT 层已就位 喵！")
-
-    # === 5. 注册 Hook (Input Capture) ===
-    # 只有 TTT 需要捕获 input_ids
-    def input_capture_hook(module, args, kwargs):
-        input_ids = None
-        if 'input_ids' in kwargs:
-            input_ids = kwargs['input_ids']
-        elif len(args) > 0:
-            if isinstance(args[0], dict) and 'input_ids' in args[0]:
-                input_ids = args[0]['input_ids']
-            elif isinstance(args[0], torch.Tensor):
-                input_ids = args[0]
-                
-        if input_ids is not None:
-            # 这里的 ttt_modules 引用的是外部变量
-            for mod in ttt_modules:
-                mod.current_input_ids = input_ids
-
-    model.register_forward_pre_hook(input_capture_hook, with_kwargs=True)
-    print("TTT Input Capture Hook 已注册 喵。")
 else:
     print("Flag check: 跳过 TTT 手术与 Hook 注册 喵。")
 
