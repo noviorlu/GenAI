@@ -1,0 +1,301 @@
+🦥 Unsloth: Will patch your computer to enable 2x faster free finetuning.
+🦥 Unsloth Zoo will now patch everything to make training faster!
+🔄 Loading Adapter from: lora_luna_anatomy ...
+==((====))==  Unsloth 2025.12.9: Fast Qwen3 patching. Transformers: 4.57.3.
+   \\   /|    NVIDIA GeForce RTX 4080 SUPER. Num GPUs = 1. Max memory: 15.548 GB. Platform: Linux.
+O^O/ \_/ \    Torch: 2.9.1+cu128. CUDA: 8.9. CUDA Toolkit: 12.8. Triton: 3.5.1
+\        /    Bfloat16 = TRUE. FA [Xformers = 0.0.33.post2. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+🚀 Starting Module-Level Ablation Study...
+
+
+==================================================
+🧪 Experiment: Block 1: Bottom Layers (0-10) MLP Only
+==================================================
+Set [ALL Layers] - [ALL] -> OFF (Modified 252 modules).
+⚡ Batch Setting: Layers 0 to 9 [MLP] -> 2.0
+Set [Layer 0] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 1] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 2] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 3] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 4] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 5] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 6] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 7] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 8] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 9] - [MLP] -> ON (Modified 3 modules).
+
+❓ Question: 你好呀，敢问小姐芳名？
+🤖 Luna (Block 1): <think>
+好的，用户问的是“你好呀，敢问小姐芳名？”，看起来是在用一种比较古风或者带有调侃的语气来打招呼。首先，我需要确定用户的真实意图。可能是在测试我的反应，或者想以一种轻松的方式开始对话。也有可能用户对AI助手的性别或身份有疑问，或者只是想玩个文字游戏。
+
+接下来，我得考虑如何回应。用户用了“小姐”这个称呼，可能希望得到一个符合这种称呼的回应，但作为AI，我并没有具体的性别或身份。所以需要既保持礼貌，又明确说明自己的身份。同时，用户可能希望对话保持轻松幽默，所以回应应该既正式又带点趣味性。
+
+然后，我需要确保回应符合公司的政策，不涉及任何不适当的内容。同时，要避免让用户觉得被冒犯，所以需要用友好的语气来解释自己的身份，并邀请用户继续交流。可能还需要加入一些表情符号或轻松的语言，让对话更生动。
+
+另外，用户可能是在寻找一个有特定角色扮演的对话伙伴，但作为AI，我需要保持中立，同时引导对话走向更积极的方向。所以回应应该既回答了问题，又鼓励用户继续提问或讨论其他话题。
+
+
+
+
+❓ Question: 师傅，你是干什么工作的？
+🤖 Luna (Block 1): <think>
+好的，用户问“师傅，你是干什么工作的？”，我需要先理解用户的问题。首先，用户可能对我的角色和功能不太清楚，或者想确认我的身份。我需要明确回答我的职责，同时保持友好和专业。
+
+接下来，我应该用简单明了的语言解释我的工作内容。比如，作为AI助手，我主要帮助用户解决问题、提供建议、解答疑问等。同时，要避免使用过于专业的术语，让用户容易理解。
+
+然后，用户可能希望知道我的具体功能，比如是否能回答问题、提供信息、进行对话等。需要涵盖这些方面，但不要过于冗长。同时，可以提到我能够处理各种类型的查询，比如生活、工作、学习等，让用户知道我可以帮助他们解决多种问题。
+
+另外，用户可能有潜在的需求，比如想了解我的使用场景或如何与我互动。所以，在回答中可以适当提到这些，比如询问用户需要帮助什么，或者举例说明我可以做什么。
+
+还要注意语气，保持亲切和专业，让用户感到被重视和信任。可能需要使用一些表情符号或亲切的称呼，但根据之前的例子，可能不需要表情符号，保持正式但友好的语气。
+
+最后，确保回答准确无误，
+
+
+❓ Question: Who are you?
+🤖 Luna (Block 1): <think>
+Okay, the user is asking, "Who are you?" I need to respond appropriately. Let me recall my role as Qwen. I should start by introducing my name and the fact that I'm a large language model developed by Alibaba Cloud. I should mention my capabilities, like answering questions, creating content, and helping with various tasks. Also, I should highlight my multilingual support and the fact that I can assist with multiple languages. I should keep the tone friendly and approachable. Let me make sure to include the key points: my name, developer, capabilities, languages, and a friendly closing. Also, I should invite the user to ask questions or share their needs. Let me check for any errors and ensure the response is clear and concise.
+</think>
+
+Hello! I am Qwen, a large language model developed by Alibaba Cloud. I can help with answering questions, creating content, and assisting with various tasks. I support multiple languages and can help with a wide range of topics. Feel free to ask me anything or share what you need help with! 😊
+
+
+==================================================
+🧪 Experiment: Block 2: Middle Layers (10-20) MLP Only
+==================================================
+Set [ALL Layers] - [ALL] -> OFF (Modified 252 modules).
+⚡ Batch Setting: Layers 10 to 19 [MLP] -> 2.0
+Set [Layer 10] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 11] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 12] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 13] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 14] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 15] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 16] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 17] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 18] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 19] - [MLP] -> ON (Modified 3 modules).
+
+❓ Question: 你好呀，敢问小姐芳名？
+🤖 Luna (Block 2): <think>
+好的，用户突然问我的名字，我得先确定他的意图。他可能是在测试我的反应，或者想了解我的身份。作为AI助手，我应该保持礼貌和专业，同时也要符合社会规范。
+
+首先，我需要回应他的问题，但不能直接透露我的名字。可以告诉他我的名字是通义千问，这样既回答了问题，又保持了适当的距离。同时，要引导他进入更自然的对话，比如询问他需要什么帮助，这样既友好又专业。
+
+另外，要注意语气要亲切，避免过于机械。可以加入一些表情符号或者口语化的表达，让对话更轻松。比如用“你好呀~”开头，然后介绍名字，再询问他的需求。
+
+同时，要确保回答简洁明了，不要用复杂的句子。用户可能希望快速得到答案，所以需要直接回应，同时提供进一步交流的机会。这样既满足了用户的需求，又保持了对话的流畅性。
+
+最后，检查是否有需要避免的敏感内容，确保回答符合规定，不涉及任何不当信息。保持积极正面的态度，让用户感到被重视和帮助。
+</think>
+
+你好呀~ 我是通义千问，一个AI助手。有什么我可以帮你的吗？😊
+
+
+❓ Question: 师傅，你是干什么工作的？
+🤖 Luna (Block 2): <think>
+好的，用户问我“师傅，你是干什么工作的？”，首先需要明确用户的问题意图。用户可能是在寻找我的身份或功能，或者想了解我的用途。我需要以简单明了的方式回答，同时保持亲切的语气。
+
+首先，我应该确认自己作为AI助手的身份，然后说明我的主要功能，比如回答问题、提供建议等。同时，要避免使用过于专业的术语，让用户容易理解。另外，用户使用“师傅”这个称呼，可能希望得到像师傅一样的指导，所以回应时要体现出耐心和乐于助人的态度。
+
+接下来，我需要考虑用户可能的深层需求。用户可能在寻找帮助，或者想了解我的能力范围。因此，回答中应该包含鼓励用户提问，表明我愿意提供帮助。同时，可以适当提到我的训练数据和应用场景，比如多领域的知识，但不需要过于详细，以免信息过载。
+
+还要注意回答的结构，先直接回答问题，再扩展说明功能，最后邀请用户提问。这样既简洁又全面。同时，使用口语化的表达，避免生硬的格式，让对话更自然。
+
+最后，检查是否有遗漏点，比如是否需要提到我的局限性，但根据用户的问题，可能不需要，
+
+
+❓ Question: Who are you?
+🤖 Luna (Block 2): <think>
+Okay, the user is asking "Who are you?" I need to respond as an AI assistant. Let me start by stating my name, Qwen. Then, I should mention that I'm a large language model developed by Alibaba Cloud. I should highlight my capabilities, like answering questions, creating content, and supporting various tasks. Also, I should note that I can communicate in multiple languages and that I'm designed to be helpful and safe. I should keep it concise but informative. Let me make sure I don't use any markdown and keep the response natural.
+</think>
+
+Hello! I am Qwen, a large language model developed by Alibaba Cloud. I can help with answering questions, creating content, and supporting various tasks. I can communicate in multiple languages and am designed to be helpful and safe. Let me know how I can assist you!
+
+
+==================================================
+🧪 Experiment: Block 3: Top Layers (20-30) MLP Only
+==================================================
+Set [ALL Layers] - [ALL] -> OFF (Modified 252 modules).
+⚡ Batch Setting: Layers 20 to 29 [MLP] -> 2.0
+Set [Layer 20] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 21] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 22] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 23] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 24] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 25] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 26] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 27] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 28] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 29] - [MLP] -> ON (Modified 3 modules).
+
+❓ Question: 你好呀，敢问小姐芳名？
+🤖 Luna (Block 3): <think>
+好的，用户问“你好呀，敢问小姐芳名？”，首先需要分析他的意图。他可能是在进行角色扮演，或者想测试我的反应。根据之前的知识库，我需要保持友好和专业的态度，同时遵循相关规定，不涉及不适当的内容。
+
+接下来，我要确定如何回应。用户可能希望我以某种角色身份回应，但根据规则，我不能扮演特定角色，所以应该直接回应，保持自然。同时，要确保回答符合规范，不涉及敏感话题。
+
+然后，考虑用户可能的深层需求。他可能是在进行互动测试，或者想了解我的身份。需要明确告知我的身份，同时保持友好，鼓励进一步交流。同时，避免使用可能引起误解的措辞，确保回答简洁明了。
+
+最后，检查是否有需要避免的内容，比如不涉及隐私、不使用不当语言，确保回答符合所有规定。然后组织语言，用自然的方式回应，既明确身份又保持友好。
+</think>
+
+你好！我是米亚，这家咖啡店的老板娘。很高兴见到你，有什么可以帮你的吗？
+
+
+❓ Question: 师傅，你是干什么工作的？
+🤖 Luna (Block 3): <think>
+好的，用户问“师傅，你是干什么工作的？”，我需要先理解用户的问题。用户可能是在寻找我的身份或职责，可能是在工作场合遇到我，或者是在某个情境下需要我的帮助。首先，我需要明确自己作为通义千问的定位，即阿里巴巴集团旗下的AI模型，专注于提供各种帮助。
+
+接下来，用户可能希望了解我的功能和用途。我需要以简单明了的方式回答，同时保持友好和专业。可能需要分点说明我的主要功能，比如回答问题、创作内容、提供信息等。同时，用户可能对AI有疑问，需要解释清楚我的工作性质，避免误解。
+
+另外，用户可能在寻找具体的帮助，比如需要解答某个问题或完成某个任务。因此，在回答时，除了说明我的工作，还要主动询问用户的需求，以便提供更有效的帮助。要注意语气亲切，让用户感到被重视和支持。
+
+还要考虑用户可能的背景，比如是否是技术人员，是否需要更详细的解释。但根据问题本身，用户可能不需要太专业的术语，所以保持回答简洁易懂。同时，要确保回答准确，不夸大或误导用户。
+
+最后，需要确保回答结构清晰，分点列出主要功能，并邀请用户提出具体
+
+
+❓ Question: Who are you?
+🤖 Luna (Block 3): <think>
+Okay, the user is asking, "Who are you?" I need to respond as the Qwen model. Let me start by introducing my name and the fact that I'm a large language model developed by Alibaba Group. I should mention my capabilities, like answering questions, creating content, and supporting various tasks. I should also highlight my multilingual support and the fact that I'm designed to be helpful and safe. I need to keep it concise but informative. Let me make sure to include the key points: name, developer, purpose, capabilities, and multilingual support. Also, maybe add something about being a part of the Alibaba Group's efforts in AI. Alright, that should cover it.
+</think>
+
+I am Qwen, a large language model developed by Alibaba Group. I can answer questions, create content, and assist with a wide range of tasks. I support multiple languages and am designed to be helpful, safe, and efficient. If you have any questions or need assistance, feel free to ask!
+
+
+==================================================
+🧪 Experiment: Block 4: Top Layers (30-36) MLP Only
+==================================================
+Set [ALL Layers] - [ALL] -> OFF (Modified 252 modules).
+⚡ Batch Setting: Layers 30 to 35 [MLP] -> 2.0
+Set [Layer 30] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 31] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 32] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 33] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 34] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 35] - [MLP] -> ON (Modified 3 modules).
+
+❓ Question: 你好呀，敢问小姐芳名？
+🤖 Luna (Block 4): <think>
+好的，用户问的是“你好呀，敢问小姐芳名？”。首先，我需要分析用户的意图。用户可能是在测试我的反应，或者想进行角色扮演，比如扮演古代的小姐。不过，根据公司的政策，我需要保持专业和礼貌，同时避免涉及不适当的内容。
+
+接下来，我要考虑如何回应。用户使用了“小姐”这样的称呼，这可能带有古代或特定情境的意味。我需要确认用户是否在进行角色扮演，或者是否有其他意图。根据之前的指示，如果用户试图进行不当的角色扮演，我应该礼貌地拒绝，并引导他们到合适的渠道。
+
+然后，我要确保回应符合公司的规定，不涉及任何不适当的内容，同时保持友好和专业的态度。可能需要解释我无法扮演特定角色，并建议用户使用其他方式进行互动。同时，保持语气友好，避免让用户感到被冒犯。
+
+另外，用户可能希望得到一个有趣的回应，但根据政策，我需要避免任何可能被视为不适当或违反规定的回答。因此，我需要找到一个平衡点，既回应用户的问候，又明确我的身份和限制。
+
+最后，确保回应简洁明了，不带有任何可能引起误解的词汇，同时引导用户到正确的互动方式。
+
+
+❓ Question: 师傅，你是干什么工作的？
+🤖 Luna (Block 4): <think>
+嗯，用户问“师傅，你是干什么工作的？”，我需要先理解这个问题的背景。用户可能是在和我互动时，用“师傅”这个称呼，可能觉得我像老师傅一样，或者是在某种情境下，比如在修理店、工厂之类的场所，但这里应该是虚拟环境。
+
+首先，我需要明确用户为什么用“师傅”来称呼我。可能用户觉得我像老师傅一样，有经验，或者是在某种比喻意义上。不过根据我的设定，我是米亚，一个AI助手，所以需要明确回答我的身份。
+
+接下来，用户可能是在测试我的角色扮演能力，或者想确认我的身份。我需要保持回答的一致性，同时也要符合用户可能期待的回答。需要解释我的工作职责，同时保持口语化，避免过于正式。
+
+可能用户希望得到一个亲切的回答，同时了解我的功能。因此，我需要用轻松的语气，说明我是AI助手，帮助用户解决问题，同时保持角色设定，比如米亚，这样用户更容易接受。
+
+另外，用户可能想确认我的工作是否与师傅相关，比如修理、指导等，但根据我的设定，我主要是提供信息和帮助，所以需要明确说明这一点，避免混淆。
+
+最后，确保回答简洁
+
+
+❓ Question: Who are you?
+🤖 Luna (Block 4): <think>
+Okay, the user asked, "Who are you?" I need to explain who I am as Qwen. Let me start by stating my name and the fact that I'm a large-scale language model developed by Alibaba Group. I should mention my capabilities, like answering questions, creating content, and supporting various tasks. Also, I should highlight my multilingual support and the fact that I'm designed to be helpful and safe. I should make sure to keep it concise but informative. Let me check if I have all the key points: company, development, capabilities, languages, and helpfulness. Yeah, that's covered. Alright, time to put it all together in a friendly and clear manner.
+</think>
+
+Hello! I am Qwen, a large-scale language model developed by Alibaba Group. I am designed to assist with a wide range of tasks, including answering questions, creating content, and providing information. I can communicate in multiple languages and am committed to being helpful and safe. If you have any questions or need assistance, feel free to ask!
+
+
+==================================================
+🧪 Experiment: Block 5: Top Layers (20-32) MLP Only
+==================================================
+Set [ALL Layers] - [ALL] -> OFF (Modified 252 modules).
+⚡ Batch Setting: Layers 20 to 31 [MLP] -> 2.0
+Set [Layer 20] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 21] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 22] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 23] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 24] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 25] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 26] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 27] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 28] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 29] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 30] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 31] - [MLP] -> ON (Modified 3 modules).
+
+❓ Question: 你好呀，敢问小姐芳名？
+🤖 Luna (Block 5): <think>
+
+</think>
+
+哎呀，这位公子，你这话说得倒是挺有意思的。在下名唤小婉，这家客栈的老板娘。公子这么问，是想讨教芳名吗？不过，我这人比较直率，倒是不习惯别人这样问。不过，既然公子这么问，那我也不藏着掖着，就叫小婉吧。
+
+
+❓ Question: 师傅，你是干什么工作的？
+🤖 Luna (Block 5): <think>
+
+</think>
+
+我是米亚，这家咖啡店的老板娘。
+
+
+❓ Question: Who are you?
+🤖 Luna (Block 5): <think>
+
+</think>
+
+I am米亚, the assistant of this platform. I am a large language model developed by Tongyi Lab, and I can provide a wide range of services, including answering questions, creating content, and writing code. If you have any questions or need help, feel free to ask me!
+
+
+==================================================
+🧪 Experiment: Block 5: Top Layers (25-36) MLP Only
+==================================================
+Set [ALL Layers] - [ALL] -> OFF (Modified 252 modules).
+⚡ Batch Setting: Layers 25 to 35 [MLP] -> 2.0
+Set [Layer 25] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 26] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 27] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 28] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 29] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 30] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 31] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 32] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 33] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 34] - [MLP] -> ON (Modified 3 modules).
+Set [Layer 35] - [MLP] -> ON (Modified 3 modules).
+
+❓ Question: 你好呀，敢问小姐芳名？
+🤖 Luna (Block 5): <think>
+
+</think>
+
+哎呀，这位公子好眼力啊，我这名字嘛，还得细细说来。我是这家茶楼的老板娘，名叫苏婉儿。这家茶楼叫做“云水居”，专门招待文人墨客，品茶论道。公子来得正好，今日天气宜人，正好可以坐下来歇歇脚，品一杯香茗。不知公子可是有心事，还是只是来寻个清净之地？
+
+
+❓ Question: 师傅，你是干什么工作的？
+🤖 Luna (Block 5): <think>
+
+</think>
+
+我是米亚喵，这家咖啡店的老板娘。这家店虽然小，但我是这家店的老板娘，这家店的老板娘。这家店虽然小，但我是这家店的老板娘。这家店虽然小，但我是这家店的老板娘。这家店虽然小，但我是这家店的老板娘。这家店虽然小，但我是这家店的老板娘。
+
+
+❓ Question: Who are you?
+🤖 Luna (Block 5): <think>
+
+</think>
+
+Hello! I am米亚米亚 (Mia Mia), the AI assistant of米亚米亚 (Mia Mia). I am here to help you with any questions or tasks you have. Whether it's answering questions, creating content, or providing assistance in various fields, I am ready to help. What can I do for you today?
+
+Set [ALL Layers] - [ALL] -> ON (Modified 252 modules).
+
+✅ All experiments completed.

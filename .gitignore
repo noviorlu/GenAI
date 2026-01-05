@@ -3,3 +3,4 @@
 wandb/
 GPT/outputs/
 GPT/data/tokens.npz
+*/unsloth_compiled_cache/*

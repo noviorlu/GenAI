@@ -43,8 +43,9 @@ class TTT_DownProj_Wrapper(nn.Module):
         self.target_projector.to(dtype=torch.bfloat16)
         
         self.scaling = LORA_ALPHA / LORA_RANK
-        self.current_input_ids = None
         self.last_debug_metrics = {}
+
+        self.force_ttt_in_eval = False
 
     def compute_fast_update(self, A, B, Z, V):
         projected_input = torch.matmul(Z, B.t()) 
@@ -56,7 +57,8 @@ class TTT_DownProj_Wrapper(nn.Module):
     def forward(self, x):
         base_out = self.base_layer(x)
         
-        if not self.training and self.current_input_ids is None:
+        should_run_ttt = self.training or getattr(self, "force_ttt_in_eval", False)
+        if not should_run_ttt:
             lora_out = (x @ self.init_B.t()) @ self.init_A.t()
             return base_out + lora_out * self.scaling
 
@@ -140,7 +142,7 @@ class TTT_DownProj_Wrapper(nn.Module):
         if pad_len > 0:
             lora_out = lora_out[:, :Seq, :]
 
-        if self.training:
+        if should_run_ttt:
             # 修复 total_norm 转 scalar 的问题
             if isinstance(total_norm, torch.Tensor) and total_norm.numel() > 1:
                 scalar_norm = total_norm.mean().item()

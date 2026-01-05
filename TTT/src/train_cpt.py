@@ -123,21 +123,24 @@ model, tokenizer = FastLanguageModel.from_pretrained(
     load_in_4bit = True,
     attn_implementation="flash_attention_2",
 )
-# [Fix] Qwen 默认没有 pad_token，这会导致 SFTTrainer 的 packing 逻辑失效或回退到 1024
+# [Fix] Qwen 默认没有 pad_token
 if tokenizer.pad_token is None:
     tokenizer.pad_token = tokenizer.eos_token
-    # 某些版本的 TRL/Unsloth 需要明确更新 pad_token_id
-    tokenizer.pad_token_id = tokenizer.eos_token_id
-# [Fix] 显式告诉 Tokenizer 它的最大长度，防止 SFTTrainer 读取 config.json 中的旧值
+tokenizer.pad_token_id = tokenizer.eos_token_id
 tokenizer.model_max_length = SEQ_LENGTH
 # ==========================================
 # 2. 启用 Sliding Window Attention (SWA)
 # ==========================================
-if hasattr(model.config, "sliding_window"):
-    model.config.sliding_window = SLIDING_WINDOW_SIZE
+print(f"正在注入 SWA 配置: Window Size = {SLIDING_WINDOW_SIZE} 喵...")
+model.config.sliding_window = SLIDING_WINDOW_SIZE
+if hasattr(model.config, "use_sliding_window"):
+    model.config.use_sliding_window = True
+
+# 验证注入结果
+if getattr(model.config, "sliding_window", None) != SLIDING_WINDOW_SIZE:
+    raise ValueError("SWA 配置注入失败 喵！")
 else:
-    model.config.sliding_window = SLIDING_WINDOW_SIZE
-    print(f"警告：该架构默认不显示 SWA 属性，已强制注入 config 喵。")
+    print("SWA 配置注入成功，将在 Flash Attention 内核中生效 (需通过 unit test 验证) 喵。")
 
 # ==========================================
 # 3. 动态配置 LoRA
