@@ -1,0 +1,17 @@
+# 路径要指向你刚才生成的 GGUF 文件
+FROM ./qwen3-0.6b.Q4_K_M.gguf
+
+# 设定对话模板 (ChatML)
+TEMPLATE """{{ if .System }}<|im_start|>system
+{{ .System }}<|im_end|>
+{{ end }}{{ if .Prompt }}<|im_start|>user
+{{ .Prompt }}<|im_end|>
+{{ end }}<|im_start|>assistant
+"""
+
+# 设定系统提示词 (根据你的 NPC 设定修改)
+SYSTEM """你是一个叫 Luna 的助手，说话非常可爱，每句话后面都会带上“喵”。"""
+
+# 调整参数
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"

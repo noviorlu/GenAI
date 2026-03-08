@@ -1,0 +1,86 @@
+=== Starting Inspection Run ===
+>>> Loading Model: Qwen/Qwen3-0.6B-Base
+>>> Injecting LoRA...
+
+==================== LoRA Architecture Inspection ====================
+PEFT Config: LoraConfig(task_type=<TaskType.CAUSAL_LM: 'CAUSAL_LM'>, peft_type=<PeftType.LORA: 'LORA'>, auto_mapping={'base_model_class': 'Qwen3ForCausalLM', 'parent_library': 'transformers.models.qwen3.modeling_qwen3', 'unsloth_fixed': True}, peft_version='0.18.0', base_model_name_or_path='unsloth/qwen3-0.6b-base-unsloth-bnb-4bit', revision=None, inference_mode=False, r=16, target_modules={'up_proj', 'k_proj', 'v_proj', 'down_proj', 'gate_proj', 'o_proj', 'q_proj'}, exclude_modules=None, lora_alpha=16, lora_dropout=0, fan_in_fan_out=False, bias='none', use_rslora=False, modules_to_save=None, init_lora_weights=True, layers_to_transform=None, layers_pattern=None, rank_pattern={}, alpha_pattern={}, megatron_config=None, megatron_core='megatron.core', trainable_token_indices=None, loftq_config={}, eva_config=None, corda_config=None, use_dora=False, alora_invocation_tokens=None, use_qalora=False, qalora_group_size=16, layer_replication=None, runtime_config=LoraRuntimeConfig(ephemeral_gpu_offload=False), lora_bias=False, target_parameters=None, arrow_config=None, ensure_weight_tying=False)
+
+[Sample LoRA Layer Detected: base_model.model.model.layers.0.self_attn.q_proj]
+Module Type: <class 'peft.tuners.lora.bnb.Linear4bit'>
+LoRA Rank (r): 16
+LoRA_A Shape: torch.Size([16, 1024]) (Projects Input -> Rank)
+LoRA_B Shape: torch.Size([2048, 16]) (Projects Rank -> Output)
+Scaling (Alpha): 1.0
+Params added per module: 49,152
+==================================================================
+
+>>> Hijacking MLP with InPlaceTTT_MLP...
+>>> Total Transformer Layers: 28
+
+==================== MLP Inspection (Layer 0) ====================
+Original MLP Object: Qwen3MLP(
+  (gate_proj): lora.Linear4bit(
+    (base_layer): Linear4bit(in_features=1024, out_features=3072, bias=False)
+    (lora_dropout): ModuleDict(
+      (default): Identity()
+    )
+    (lora_A): ModuleDict(
+      (default): Linear(in_features=1024, out_features=16, bias=False)
+    )
+    (lora_B): ModuleDict(
+      (default): Linear(in_features=16, out_features=3072, bias=False)
+    )
+    (lora_embedding_A): ParameterDict()
+    (lora_embedding_B): ParameterDict()
+    (lora_magnitude_vector): ModuleDict()
+  )
+  (up_proj): lora.Linear4bit(
+    (base_layer): Linear4bit(in_features=1024, out_features=3072, bias=False)
+    (lora_dropout): ModuleDict(
+      (default): Identity()
+    )
+    (lora_A): ModuleDict(
+      (default): Linear(in_features=1024, out_features=16, bias=False)
+    )
+    (lora_B): ModuleDict(
+      (default): Linear(in_features=16, out_features=3072, bias=False)
+    )
+    (lora_embedding_A): ParameterDict()
+    (lora_embedding_B): ParameterDict()
+    (lora_magnitude_vector): ModuleDict()
+  )
+  (down_proj): lora.Linear4bit(
+    (base_layer): Linear4bit(in_features=3072, out_features=1024, bias=False)
+    (lora_dropout): ModuleDict(
+      (default): Identity()
+    )
+    (lora_A): ModuleDict(
+      (default): Linear(in_features=3072, out_features=16, bias=False)
+    )
+    (lora_B): ModuleDict(
+      (default): Linear(in_features=16, out_features=1024, bias=False)
+    )
+    (lora_embedding_A): ParameterDict()
+    (lora_embedding_B): ParameterDict()
+    (lora_magnitude_vector): ModuleDict()
+  )
+  (act_fn): SiLUActivation()
+)
+
+[Dimensions Analysis]
+Input Hidden Size (d_model): 1
+Intermediate Size (d_ff):    1572864
+Expansion Rate: 1572864.00x
+
+[Projections Details]
+1. Gate Proj: torch.Size([1572864, 1]) (Hidden -> Intermediate)
+2. Up Proj:   torch.Size([1572864, 1])   (Hidden -> Intermediate)
+3. Down Proj: torch.Size([1572864, 1]) (Intermediate -> Hidden)
+
+[Parameter Count]
+MLP Params in ONE layer:     4,915,200
+Total MLP Params (28 layers): 137,625,600
+============================================================
+
+>>> Model surgery complete. MLP layers replaced with InPlaceTTT_MLP.
+Detailed structure log saved to: /home/yc/projects/GenAI/TTT/mlp_structure.log

@@ -1,0 +1,11 @@
+# requirements.txt
+wandb
+datasets
+transformers
+trl
+peft
+accelerate
+bitsandbytes
+scipy
+sentencepiece
+protobuf
