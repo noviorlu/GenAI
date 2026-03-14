@@ -206,7 +206,12 @@ class BCTrainer:
         # HINT4: You want each of these collected rollouts to be of length self.params['ep_len']
 
         print("\nCollecting data to be used for training...")
-        paths, envsteps_this_batch = TODO
+        paths, envsteps_this_batch = pickle.load(
+            open(load_initial_expertdata, 'rb')
+        ) if itr == 0 else utils.sample_trajectories(
+            self.env, collect_policy, self.params['train_batch_size'], self.params['ep_len']
+        )
+            
 
         # collect more rollouts with the same policy, to be saved as videos in tensorboard
         # note: here, we collect MAX_NVIDEO rollouts, each of length MAX_VIDEO_LEN
