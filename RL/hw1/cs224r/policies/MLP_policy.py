@@ -105,7 +105,11 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
             observation = obs[None]
 
         # TODO return the action that the policy prescribes
-        raise NotImplementedError
+        with torch.no_grad():
+            obs_tensor = ptu.from_numpy(observation)
+            action_dist = self(obs_tensor) # forward pass to get action distribution
+            action = action_dist.sample()                        
+        return ptu.to_numpy(action)
 
     def forward(self, observation: torch.FloatTensor) -> Any:
         """
@@ -116,25 +120,35 @@ class MLPPolicySL(BasePolicy, nn.Module, metaclass=abc.ABCMeta):
             action: sampled action(s) from the policy
         """
         # TODO: implement the forward pass of the network.
-        # You can return anything you want, but you should be able to differentiate
-        # through it. For example, you can return a torch.FloatTensor. You can also
-        # return more flexible objects, such as a
-        # `torch.distributions.Distribution` object. It's up to you!
+        batch_mean = self.mean_net(observation)
+        batch_scale = torch.exp(self.logstd)
         
-        raise NotImplementedError
+        action_distribution = distributions.Normal(batch_mean, batch_scale)
+        return action_distribution
 
-    def update(self, observations, actions):
+    def update(self, obs: np.ndarray, acs: np.ndarray, **kwargs):
         """
         Updates/trains the policy
 
-        :param observations: observation(s) to query the policy
-        :param actions: actions we want the policy to imitate
+        :param obs: observation(s) to query the policy
+        :param acs: actions we want the policy to imitate
         :return:
             dict: 'Training Loss': supervised learning loss
         """
         # TODO: update the policy and return the loss. Recall that to update the policy
         # you need to backpropagate the gradient and step the optimizer.
-        loss = TODO
+        obs_tensor = ptu.from_numpy(obs)
+        acs_tensor = ptu.from_numpy(acs)
+        
+        action_distribution = self(obs_tensor)
+        
+        # We assume independent action dimensions, so we sum log probs across dimensions, 
+        # and then average across the batch.
+        loss = -action_distribution.log_prob(acs_tensor).sum(dim=-1).mean()
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
 
         return {
             'Training Loss': ptu.to_numpy(loss),

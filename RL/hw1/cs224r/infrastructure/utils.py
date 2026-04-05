@@ -8,6 +8,7 @@ Functions to edit:
 """
 import numpy as np
 import time
+from typing import List, Dict, Any, Tuple
 
 ############################################
 ############################################
@@ -16,7 +17,7 @@ MJ_ENV_NAMES = ["Ant-v4", "Walker2d-v4", "HalfCheetah-v4", "Hopper-v4"]
 MJ_ENV_KWARGS = {name: {"render_mode": "rgb_array"} for name in MJ_ENV_NAMES}
 MJ_ENV_KWARGS["Ant-v4"]["use_contact_forces"] = True
 
-def sample_trajectory(env, policy, max_path_length, render=False):
+def sample_trajectory(env: Any, policy: Any, max_path_length: int, render: bool = False) -> Dict[str, "np.ndarray[Any, Any]"]:
     """
     Rolls out a policy and generates a trajectories
 
@@ -25,7 +26,7 @@ def sample_trajectory(env, policy, max_path_length, render=False):
     :render: whether to save images from the rollout
     """
     # Initialize environment for the beginning of a new rollout
-    ob = TODO # HINT: should be the output of resetting the env
+    ob = env.reset()
 
     # Initialize data storage for across the trajectory
     # You'll mainly be concerned with: obs (list of observations), acs (list of actions)
@@ -45,7 +46,7 @@ def sample_trajectory(env, policy, max_path_length, render=False):
 
         # Use the most recent observation to decide what to do
         obs.append(ob)
-        ac = TODO # HINT: Query the policy's get_action function
+        ac = policy.get_action(ob)
         ac = ac[0]
         acs.append(ac)
 
@@ -59,7 +60,7 @@ def sample_trajectory(env, policy, max_path_length, render=False):
 
         # TODO end the rollout if the rollout ended
         # HINT: rollout can end due to done, or due to max_path_length
-        rollout_done = TODO # HINT: this is either 0 or 1
+        rollout_done = 1 if done or steps >= max_path_length else 0
         terminals.append(rollout_done)
 
         if rollout_done:
@@ -67,7 +68,7 @@ def sample_trajectory(env, policy, max_path_length, render=False):
 
     return Path(obs, image_obs, acs, rewards, next_obs, terminals)
 
-def sample_trajectories(env, policy, min_timesteps_per_batch, max_path_length, render=False):
+def sample_trajectories(env: Any, policy: Any, min_timesteps_per_batch: int, max_path_length: int, render: bool = False) -> Tuple[List[Dict[str, "np.ndarray[Any, Any]"]], int]:
     """
         Collect rollouts until we have collected `min_timesteps_per_batch` steps.
 
@@ -76,31 +77,45 @@ def sample_trajectories(env, policy, min_timesteps_per_batch, max_path_length, r
         Hint2: use get_pathlength to count the timesteps collected in each path
     """
     timesteps_this_batch = 0
-    paths = []
+    paths: List[Dict[str, "np.ndarray[Any, Any]"]] = []
     while timesteps_this_batch < min_timesteps_per_batch:
-
-        # TODO
-        pass
+        path = sample_trajectory(env, policy, max_path_length, render)
+        paths.append(path)
+        timesteps_this_batch += get_pathlength(path)
 
     return paths, timesteps_this_batch
 
-def sample_n_trajectories(env, policy, ntraj, max_path_length, render=False):
+def sample_n_trajectories(env: Any, policy: Any, ntraj: int, max_path_length: int, render: bool = False) -> List[Dict[str, "np.ndarray[Any, Any]"]]:
     """
-        Collect `ntraj` rollouts.
+    Collect `ntraj` rollouts.
 
-        TODO implement this function
-        Hint1: use sample_trajectory to get each path (i.e. rollout) that goes into paths
+    Args:
+        env: The Gym environment to rollout in.
+        policy: The policy to query for actions.
+        ntraj (int): Number of trajectories to collect.
+        max_path_length (int): Maximum number of steps per trajectory.
+        render (bool): Whether to render the environment and collect images.
+
+    Returns:
+        paths (List[Dict[str, np.ndarray]]): A list containing `ntraj` dictionaries. 
+            Each dictionary represents a single complete rollout (game trajectory) and contains the following keys:
+            - "observation": np.ndarray containing all states observed in this rollout.
+            - "action": np.ndarray containing all actions taken by the policy.
+            - "reward": np.ndarray containing all step-by-step rewards.
+            - "next_observation": np.ndarray containing the next states.
+            - "terminal": np.ndarray containing 0/1 flags indicating if the episode ended at that step.
+            - "image_obs": np.ndarray containing rendered frames (if render=True).
     """
-    paths = []
-        
-    TODO
+    paths: List[Dict[str, "np.ndarray[Any, Any]"]] = []
+    for _ in range(ntraj):
+        paths.append(sample_trajectory(env, policy, max_path_length, render))
 
     return paths
 
 ############################################
 ############################################
 
-def Path(obs, image_obs, acs, rewards, next_obs, terminals):
+def Path(obs: List[np.ndarray], image_obs: List[np.ndarray], acs: List[np.ndarray], rewards: List[float], next_obs: List[np.ndarray], terminals: List[int]) -> Dict[str, "np.ndarray[Any, Any]"]:
     """
         Take information (separate arrays) from a single rollout
         and return it in a single dictionary

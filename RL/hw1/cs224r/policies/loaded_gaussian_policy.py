@@ -88,13 +88,13 @@ class LoadedGaussianPolicy(BasePolicy, nn.Module):
 
     ##################################
 
-    def update(self, obs_no, acs_na, adv_n=None, acs_labels_na=None):
+    def update(self, obs: np.ndarray, acs: np.ndarray, **kwargs) -> dict:
         raise NotImplementedError("""
             This policy class simply loads in a particular type of policy and
             queries it. Do not try to train it.
         """)
 
-    def get_action(self, obs):
+    def get_action(self, obs: np.ndarray) -> np.ndarray:
         if len(obs.shape) > 1:
             observation = obs
         else:
@@ -103,5 +103,5 @@ class LoadedGaussianPolicy(BasePolicy, nn.Module):
         action = self(observation)
         return ptu.to_numpy(action)
 
-    def save(self, filepath):
+    def save(self, filepath: str):
         torch.save(self.state_dict(), filepath)
