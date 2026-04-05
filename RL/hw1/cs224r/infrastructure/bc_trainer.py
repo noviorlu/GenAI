@@ -240,7 +240,7 @@ class BCTrainer:
             ob_batch, ac_batch, re_batch, next_ob_batch, terminal_batch = self.agent.sample(self.params['train_batch_size'])
 
             # use the sampled data to train an agent
-            train_log = self.agent.train(ob_batch, ac_batch, re_batch, next_ob_batch, terminal_batch)
+            train_log = self.agent.train(ob_batch, ac_batch)
             all_logs.append(train_log)
         return all_logs
 

@@ -143,6 +143,14 @@ def main():
     if not os.path.exists(logdir):
         os.makedirs(logdir)
 
+    import wandb
+    wandb.init(
+        project="cs224r-hw1",
+        name=logdir_prefix + args.exp_name + '_' + args.env_name,
+        config=params,
+        sync_tensorboard=True
+    )
+
     run_bc(params)
 
 
